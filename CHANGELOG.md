@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 - Nothing yet.
 
+## [0.2.6] - 2025-10-29
+### Fixed
+- Escape now exits the fullscreen media preview instead of quitting the app.
+
 ## [0.2.5] - 2025-10-17
 ### Added
 - First-run release notes view that opens the latest highlights directly in the content pane and keeps them available from the guided menu.

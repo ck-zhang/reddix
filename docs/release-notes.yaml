@@ -1,4 +1,11 @@
 release:
+  - version: "0.2.6"
+    title: "What's new in v0.2.6"
+    banner: "Esc exits fullscreen previews without quitting Reddix."
+    summary: "Keep the session running: press Esc to drop out of fullscreen and stay in the feed."
+    url: "https://github.com/ck-zhang/reddix/releases/tag/v0.2.6"
+    details:
+      - "Esc now closes the fullscreen media preview instead of terminating the application."
   - version: "0.2.5"
     title: "What's new in v0.2.5"
     banner: "Comments arrive! Reauthorize Reddit to grant the new submit scope."
@@ -8,4 +15,3 @@ release:
       - "Reply from the terminal: highlight a comment or the \"Comment thread\" entry and press w."
       - "Existing installs must reauthorize Reddit access via the guided menu so the submit scope is granted."
       - "If submissions fail, open the guided menu (m) and walk through Add new account to refresh credentials."
-
