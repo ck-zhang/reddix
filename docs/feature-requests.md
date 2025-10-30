@@ -23,7 +23,7 @@ This document tracks community requests and ideas for future Reddix releases.
 - Added inline Kitty/mpv video playback embedded directly in the post content for hosted Reddit videos.
 
 ## Backlog Notes
-
+- Support user-selectable theme presets beyond the default terminal palette.
 - Move extra feed metadata into alternate panes.
 - Add discovery and media tools like subreddit browser, Reddit search, external player hooks, downloads, and notifications.
 - Package for more distros such as Nix and Arch/AUR.
