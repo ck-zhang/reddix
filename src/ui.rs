@@ -4564,6 +4564,11 @@ impl Model {
             return Ok(false);
         }
 
+        if self.media_fullscreen && matches!(code, KeyCode::Esc) {
+            self.toggle_media_fullscreen()?;
+            return Ok(false);
+        }
+
         if self.comment_composer.is_some() {
             return self.handle_comment_composer_key(key);
         }
