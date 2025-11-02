@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 - Nothing yet.
 
+## [0.2.7] - 2025-10-29
+### Changed
+- `ui.theme = default` now follows your terminal colors out of the box.
+
 ## [0.2.6] - 2025-10-29
 ### Fixed
 - Escape now exits the fullscreen media preview instead of quitting the app.
