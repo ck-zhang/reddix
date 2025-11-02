@@ -76,17 +76,6 @@ const VIDEO_CACHE_TTL_SECS: u64 = 60 * 60 * 12;
 const MAX_PENDING_MEDIA_REQUESTS: usize = 8;
 
 // TODO add richer inline video controls (pause/seek/audio)
-const COLOR_BG: Color = Color::Rgb(30, 30, 46);
-const COLOR_PANEL_BG: Color = Color::Rgb(24, 24, 36);
-const COLOR_PANEL_FOCUSED_BG: Color = Color::Rgb(49, 50, 68);
-const COLOR_PANEL_SELECTED_BG: Color = Color::Rgb(69, 71, 90);
-const COLOR_BORDER_IDLE: Color = Color::Rgb(49, 50, 68);
-const COLOR_BORDER_FOCUSED: Color = Color::Rgb(137, 180, 250);
-const COLOR_TEXT_PRIMARY: Color = Color::Rgb(205, 214, 244);
-const COLOR_TEXT_SECONDARY: Color = Color::Rgb(166, 173, 200);
-const COLOR_ACCENT: Color = Color::Rgb(137, 180, 250);
-const COLOR_SUCCESS: Color = Color::Rgb(166, 227, 161);
-const COLOR_ERROR: Color = Color::Rgb(243, 139, 168);
 
 const PROJECT_LINK_URL: &str = "https://github.com/ck-zhang/reddix";
 const SUPPORT_LINK_URL: &str = "https://ko-fi.com/ckzhang";
@@ -94,18 +83,6 @@ const CURRENT_VERSION_OVERRIDE_ENV: &str = "REDDIX_OVERRIDE_CURRENT_VERSION";
 const REDDIX_COMMUNITY: &str = "ReddixTUI";
 const REDDIX_COMMUNITY_DISPLAY: &str = "r/ReddixTUI";
 const MPV_PATH_ENV: &str = "REDDIX_MPV_PATH";
-const COMMENT_DEPTH_COLORS: [Color; 6] = [
-    Color::Rgb(250, 179, 135),
-    Color::Rgb(166, 227, 161),
-    Color::Rgb(203, 166, 247),
-    Color::Rgb(245, 194, 231),
-    Color::Rgb(137, 220, 235),
-    Color::Rgb(249, 226, 175),
-];
-
-fn comment_depth_color(depth: usize) -> Color {
-    COMMENT_DEPTH_COLORS[depth % COMMENT_DEPTH_COLORS.len()]
-}
 
 fn vote_from_likes(likes: Option<bool>) -> i32 {
     match likes {
@@ -1867,6 +1844,7 @@ fn content_from_post(post: &PostPreview) -> String {
 
 #[allow(clippy::too_many_arguments)]
 fn load_media_preview(
+    theme: &crate::theme::Palette,
     post: &reddit::Post,
     cancel_flag: &AtomicBool,
     media_handle: Option<media::Handle>,
@@ -1912,7 +1890,7 @@ fn load_media_preview(
                 "resolved post={} url={} width={} height={} cols={} rows={}",
                 post.name, video_source.playback_url, width_px, height_px, cols, rows
             ));
-            let placeholder = kitty_placeholder_text(cols, rows, MEDIA_INDENT, label);
+            let placeholder = kitty_placeholder_text(theme, cols, rows, MEDIA_INDENT, label);
             return Ok(MediaLoadOutcome::Ready(MediaPreview {
                 placeholder,
                 kitty: None,
@@ -2013,7 +1991,7 @@ fn load_media_preview(
     if cancel_flag.load(Ordering::SeqCst) {
         return Ok(MediaLoadOutcome::Deferred);
     }
-    let placeholder = kitty_placeholder_text(cols, rows, MEDIA_INDENT, &label);
+    let placeholder = kitty_placeholder_text(theme, cols, rows, MEDIA_INDENT, &label);
     Ok(MediaLoadOutcome::Ready(MediaPreview {
         placeholder,
         kitty: Some(kitty),
@@ -2110,7 +2088,13 @@ fn fetch_cached_video_path(
     }
 }
 
-fn kitty_placeholder_text(cols: i32, rows: i32, indent: u16, label: &str) -> Text<'static> {
+fn kitty_placeholder_text(
+    theme: &crate::theme::Palette,
+    cols: i32,
+    rows: i32,
+    indent: u16,
+    label: &str,
+) -> Text<'static> {
     let row_count = rows.max(1) as usize;
     let indent_width = indent as usize;
     let indent_str = " ".repeat(indent_width);
@@ -2123,7 +2107,7 @@ fn kitty_placeholder_text(cols: i32, rows: i32, indent: u16, label: &str) -> Tex
     let label_line = format!("{}[image: {}]", indent_str, label);
     lines.push(Line::from(Span::styled(
         label_line,
-        Style::default().fg(COLOR_TEXT_SECONDARY),
+        Style::default().fg(theme.text_secondary),
     )));
     text_with_lines(lines)
 }
@@ -3273,6 +3257,7 @@ pub struct Options {
     pub store: Arc<storage::Store>,
     pub session_manager: Option<Arc<session::Manager>>,
     pub fetch_subreddits_on_start: bool,
+    pub theme: crate::theme::Palette,
 }
 
 pub struct Model {
@@ -3368,6 +3353,7 @@ pub struct Model {
     needs_redraw: bool,
     numeric_jump: Option<NumericJump>,
     spinner: Spinner,
+    theme: crate::theme::Palette,
     config_path: String,
     comment_status: String,
     comment_composer: Option<CommentComposer>,
@@ -3387,6 +3373,11 @@ pub struct Model {
 }
 
 impl Model {
+    fn comment_depth_color(&self, depth: usize) -> Color {
+        let palette = &self.theme.comment_depth;
+        palette[depth % palette.len()]
+    }
+
     fn queue_update_check(&mut self) {
         if self.update_checked || self.update_check_in_progress {
             return;
@@ -4032,39 +4023,39 @@ impl Model {
 
     fn show_release_note_in_content(&mut self, note: &release_notes::ReleaseNote) {
         self.release_note_active = true;
-        self.content = Self::release_note_text(note);
+        self.content = self.release_note_text(note);
         self.content_source = format!("Release notes {}", note.version);
         self.content_scroll = 0;
         self.focused_pane = Pane::Content;
         self.mark_dirty();
     }
 
-    fn release_note_text(note: &release_notes::ReleaseNote) -> Text<'static> {
+    fn release_note_text(&self, note: &release_notes::ReleaseNote) -> Text<'static> {
         let mut lines: Vec<Line<'static>> = Vec::new();
         lines.push(Line::from(vec![Span::styled(
             note.title.clone(),
             Style::default()
-                .fg(COLOR_ACCENT)
+                .fg(self.theme.accent)
                 .add_modifier(Modifier::BOLD),
         )]));
         lines.push(Line::from(vec![Span::styled(
             format!("Version {}", note.version),
             Style::default()
-                .fg(COLOR_TEXT_SECONDARY)
+                .fg(self.theme.text_secondary)
                 .add_modifier(Modifier::ITALIC),
         )]));
         lines.push(Line::default());
         lines.push(Line::from(vec![Span::styled(
             note.banner.clone(),
             Style::default()
-                .fg(COLOR_TEXT_PRIMARY)
+                .fg(self.theme.text_primary)
                 .add_modifier(Modifier::BOLD),
         )]));
         lines.push(Line::default());
         for detail in &note.details {
             lines.push(Line::from(vec![
-                Span::styled("• ".to_string(), Style::default().fg(COLOR_ACCENT)),
-                Span::styled(detail.clone(), Style::default().fg(COLOR_TEXT_PRIMARY)),
+                Span::styled("• ".to_string(), Style::default().fg(self.theme.accent)),
+                Span::styled(detail.clone(), Style::default().fg(self.theme.text_primary)),
             ]));
         }
         if !note.details.is_empty() {
@@ -4073,15 +4064,18 @@ impl Model {
         lines.push(Line::from(vec![Span::styled(
             "Press m → Release notes to revisit this message.".to_string(),
             Style::default()
-                .fg(COLOR_TEXT_SECONDARY)
+                .fg(self.theme.text_secondary)
                 .add_modifier(Modifier::ITALIC),
         )]));
         lines.push(Line::from(vec![
             Span::styled(
                 "Full release notes: ".to_string(),
-                Style::default().fg(COLOR_TEXT_SECONDARY),
+                Style::default().fg(self.theme.text_secondary),
             ),
-            Span::styled(note.release_url.clone(), Style::default().fg(COLOR_ACCENT)),
+            Span::styled(
+                note.release_url.clone(),
+                Style::default().fg(self.theme.accent),
+            ),
         ]));
         Text::from(lines)
     }
@@ -4286,6 +4280,7 @@ impl Model {
             needs_redraw: true,
             numeric_jump: None,
             spinner: Spinner::new(),
+            theme: opts.theme,
             config_path: opts.config_path.clone(),
             comment_status: "Select a post to load comments.".to_string(),
             comment_composer: None,
@@ -6225,12 +6220,12 @@ impl Model {
             .title(Span::styled(
                 "Help",
                 Style::default()
-                    .fg(COLOR_ACCENT)
+                    .fg(self.theme.accent)
                     .add_modifier(Modifier::BOLD),
             ))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(COLOR_ACCENT))
-            .style(Style::default().bg(COLOR_PANEL_BG))
+            .border_style(Style::default().fg(self.theme.accent))
+            .style(Style::default().bg(self.theme.panel_bg))
             .padding(Padding::new(2, 2, 1, 1));
 
         let inner = block.inner(popup_area);
@@ -6250,20 +6245,24 @@ impl Model {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(vertical[0]);
 
-        let left_text = Self::help_column_text(left_sections);
+        let left_text = self.help_column_text(left_sections);
         frame.render_widget(
-            Paragraph::new(left_text)
-                .wrap(Wrap { trim: false })
-                .style(Style::default().fg(COLOR_TEXT_PRIMARY).bg(COLOR_PANEL_BG)),
+            Paragraph::new(left_text).wrap(Wrap { trim: false }).style(
+                Style::default()
+                    .fg(self.theme.text_primary)
+                    .bg(self.theme.panel_bg),
+            ),
             columns[0],
         );
 
         if !right_sections.is_empty() {
-            let right_text = Self::help_column_text(right_sections);
+            let right_text = self.help_column_text(right_sections);
             frame.render_widget(
-                Paragraph::new(right_text)
-                    .wrap(Wrap { trim: false })
-                    .style(Style::default().fg(COLOR_TEXT_PRIMARY).bg(COLOR_PANEL_BG)),
+                Paragraph::new(right_text).wrap(Wrap { trim: false }).style(
+                    Style::default()
+                        .fg(self.theme.text_primary)
+                        .bg(self.theme.panel_bg),
+                ),
                 columns[1],
             );
         }
@@ -6272,8 +6271,8 @@ impl Model {
             .alignment(Alignment::Center)
             .style(
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
-                    .bg(COLOR_PANEL_BG)
+                    .fg(self.theme.text_secondary)
+                    .bg(self.theme.panel_bg)
                     .add_modifier(Modifier::ITALIC),
             );
         frame.render_widget(footer, vertical[1]);
@@ -6287,8 +6286,8 @@ impl Model {
             vec![ListItem::new(vec![Line::from(Span::styled(
                 "No actions available",
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
-                    .bg(COLOR_PANEL_BG)
+                    .fg(self.theme.text_secondary)
+                    .bg(self.theme.panel_bg)
                     .add_modifier(Modifier::ITALIC),
             ))])]
         } else {
@@ -6297,13 +6296,13 @@ impl Model {
                 .map(|entry| {
                     let style = if entry.enabled {
                         Style::default()
-                            .fg(COLOR_TEXT_PRIMARY)
-                            .bg(COLOR_PANEL_BG)
+                            .fg(self.theme.text_primary)
+                            .bg(self.theme.panel_bg)
                             .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
-                            .fg(COLOR_TEXT_SECONDARY)
-                            .bg(COLOR_PANEL_BG)
+                            .fg(self.theme.text_secondary)
+                            .bg(self.theme.panel_bg)
                             .add_modifier(Modifier::ITALIC)
                     };
                     ListItem::new(vec![
@@ -6320,18 +6319,18 @@ impl Model {
                     .title(Span::styled(
                         "Actions",
                         Style::default()
-                            .fg(COLOR_ACCENT)
+                            .fg(self.theme.accent)
                             .add_modifier(Modifier::BOLD),
                     ))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(COLOR_ACCENT))
-                    .style(Style::default().bg(COLOR_PANEL_BG))
+                    .border_style(Style::default().fg(self.theme.accent))
+                    .style(Style::default().bg(self.theme.panel_bg))
                     .padding(Padding::new(2, 2, 1, 1)),
             )
             .highlight_style(
                 Style::default()
-                    .fg(COLOR_TEXT_PRIMARY)
-                    .bg(COLOR_PANEL_SELECTED_BG)
+                    .fg(self.theme.text_primary)
+                    .bg(self.theme.panel_selected_bg)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ ");
@@ -6360,8 +6359,8 @@ impl Model {
         .alignment(Alignment::Center)
         .style(
             Style::default()
-                .fg(COLOR_TEXT_SECONDARY)
-                .bg(COLOR_PANEL_BG)
+                .fg(self.theme.text_secondary)
+                .bg(self.theme.panel_bg)
                 .add_modifier(Modifier::ITALIC),
         );
         frame.render_widget(instructions, chunks[1]);
@@ -6376,8 +6375,8 @@ impl Model {
             items.push(ListItem::new(vec![Line::from(Span::styled(
                 "No links available",
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
-                    .bg(COLOR_PANEL_BG)
+                    .fg(self.theme.text_secondary)
+                    .bg(self.theme.panel_bg)
                     .add_modifier(Modifier::ITALIC),
             ))]));
         } else {
@@ -6386,13 +6385,15 @@ impl Model {
                     Line::from(Span::styled(
                         entry.label.clone(),
                         Style::default()
-                            .fg(COLOR_TEXT_PRIMARY)
-                            .bg(COLOR_PANEL_BG)
+                            .fg(self.theme.text_primary)
+                            .bg(self.theme.panel_bg)
                             .add_modifier(Modifier::BOLD),
                     )),
                     Line::from(Span::styled(
                         entry.url.clone(),
-                        Style::default().fg(COLOR_ACCENT).bg(COLOR_PANEL_BG),
+                        Style::default()
+                            .fg(self.theme.accent)
+                            .bg(self.theme.panel_bg),
                     )),
                     Line::default(),
                 ];
@@ -6406,17 +6407,17 @@ impl Model {
                     .title(Span::styled(
                         "Links",
                         Style::default()
-                            .fg(COLOR_ACCENT)
+                            .fg(self.theme.accent)
                             .add_modifier(Modifier::BOLD),
                     ))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(COLOR_ACCENT))
-                    .style(Style::default().bg(COLOR_PANEL_BG)),
+                    .border_style(Style::default().fg(self.theme.accent))
+                    .style(Style::default().bg(self.theme.panel_bg)),
             )
             .highlight_style(
                 Style::default()
-                    .fg(COLOR_TEXT_PRIMARY)
-                    .bg(COLOR_PANEL_SELECTED_BG)
+                    .fg(self.theme.text_primary)
+                    .bg(self.theme.panel_selected_bg)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ ");
@@ -6441,8 +6442,8 @@ impl Model {
                 .alignment(Alignment::Center)
                 .style(
                     Style::default()
-                        .fg(COLOR_TEXT_SECONDARY)
-                        .bg(COLOR_PANEL_BG)
+                        .fg(self.theme.text_secondary)
+                        .bg(self.theme.panel_bg)
                         .add_modifier(Modifier::ITALIC),
                 );
         frame.render_widget(instructions, chunks[1]);
@@ -6468,11 +6469,13 @@ impl Model {
 
         let prompt_style = if state.editing {
             Style::default()
-                .fg(COLOR_ACCENT)
-                .bg(COLOR_PANEL_BG)
+                .fg(self.theme.accent)
+                .bg(self.theme.panel_bg)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(COLOR_TEXT_SECONDARY).bg(COLOR_PANEL_BG)
+            Style::default()
+                .fg(self.theme.text_secondary)
+                .bg(self.theme.panel_bg)
         };
         let prompt_label = if state.editing {
             "Search (typing):"
@@ -6486,8 +6489,8 @@ impl Model {
                 Span::styled(
                     state.filter.as_str(),
                     Style::default()
-                        .fg(COLOR_TEXT_PRIMARY)
-                        .bg(COLOR_PANEL_BG)
+                        .fg(self.theme.text_primary)
+                        .bg(self.theme.panel_bg)
                         .add_modifier(if state.editing {
                             Modifier::BOLD
                         } else {
@@ -6497,7 +6500,7 @@ impl Model {
             ]),
             Line::raw(""),
         ])
-        .style(Style::default().bg(COLOR_PANEL_BG))
+        .style(Style::default().bg(self.theme.panel_bg))
         .wrap(Wrap { trim: true });
         frame.render_widget(filter_line, layout[0]);
 
@@ -6506,21 +6509,21 @@ impl Model {
             items.push(ListItem::new(vec![Line::from(Span::styled(
                 "No matches",
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
-                    .bg(COLOR_PANEL_BG)
+                    .fg(self.theme.text_secondary)
+                    .bg(self.theme.panel_bg)
                     .add_modifier(Modifier::ITALIC),
             ))]));
         } else {
             for entry in &state.matches {
                 let label_style = if entry.enabled {
                     Style::default()
-                        .fg(COLOR_TEXT_PRIMARY)
-                        .bg(COLOR_PANEL_BG)
+                        .fg(self.theme.text_primary)
+                        .bg(self.theme.panel_bg)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
-                        .fg(COLOR_TEXT_SECONDARY)
-                        .bg(COLOR_PANEL_BG)
+                        .fg(self.theme.text_secondary)
+                        .bg(self.theme.panel_bg)
                         .add_modifier(Modifier::ITALIC)
                 };
 
@@ -6530,8 +6533,8 @@ impl Model {
                     lines.push(Line::from(Span::styled(
                         description.clone(),
                         Style::default()
-                            .fg(COLOR_TEXT_SECONDARY)
-                            .bg(COLOR_PANEL_BG)
+                            .fg(self.theme.text_secondary)
+                            .bg(self.theme.panel_bg)
                             .add_modifier(Modifier::ITALIC),
                     )));
                 }
@@ -6546,18 +6549,18 @@ impl Model {
                     .title(Span::styled(
                         "Navigation",
                         Style::default()
-                            .fg(COLOR_ACCENT)
+                            .fg(self.theme.accent)
                             .add_modifier(Modifier::BOLD),
                     ))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(COLOR_ACCENT))
-                    .style(Style::default().bg(COLOR_PANEL_BG))
+                    .border_style(Style::default().fg(self.theme.accent))
+                    .style(Style::default().bg(self.theme.panel_bg))
                     .padding(Padding::new(2, 2, 1, 1)),
             )
             .highlight_style(
                 Style::default()
-                    .fg(COLOR_TEXT_PRIMARY)
-                    .bg(COLOR_PANEL_SELECTED_BG)
+                    .fg(self.theme.text_primary)
+                    .bg(self.theme.panel_selected_bg)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ ");
@@ -6575,7 +6578,7 @@ impl Model {
                 Span::styled(
                     "Type to search",
                     Style::default()
-                        .fg(COLOR_TEXT_PRIMARY)
+                        .fg(self.theme.text_primary)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(" · Tab toggle typing · Esc clear/close · n toggle NSFW"),
@@ -6587,8 +6590,8 @@ impl Model {
         .alignment(Alignment::Center)
         .style(
             Style::default()
-                .fg(COLOR_TEXT_SECONDARY)
-                .bg(COLOR_PANEL_BG)
+                .fg(self.theme.text_secondary)
+                .bg(self.theme.panel_bg)
                 .add_modifier(Modifier::ITALIC),
         );
         frame.render_widget(instructions, layout[2]);
@@ -6661,7 +6664,7 @@ impl Model {
         sections
     }
 
-    fn help_column_text(sections: &[HelpSection]) -> Text<'static> {
+    fn help_column_text(&self, sections: &[HelpSection]) -> Text<'static> {
         let mut lines: Vec<Line<'static>> = Vec::new();
 
         for (index, section) in sections.iter().enumerate() {
@@ -6671,7 +6674,7 @@ impl Model {
             lines.push(Line::from(vec![Span::styled(
                 section.title.clone(),
                 Style::default()
-                    .fg(COLOR_ACCENT)
+                    .fg(self.theme.accent)
                     .add_modifier(Modifier::BOLD),
             )]));
             lines.push(Line::default());
@@ -6681,7 +6684,7 @@ impl Model {
                     Span::styled(
                         format!("  {:<18}", binding),
                         Style::default()
-                            .fg(COLOR_ACCENT)
+                            .fg(self.theme.accent)
                             .add_modifier(Modifier::BOLD),
                     ),
                     Span::raw(description.clone()),
@@ -8417,15 +8420,15 @@ impl Model {
         let title = Span::styled(
             "Write a comment",
             Style::default()
-                .fg(COLOR_ACCENT)
+                .fg(self.theme.accent)
                 .add_modifier(Modifier::BOLD),
         );
 
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(COLOR_ACCENT))
-            .style(Style::default().bg(COLOR_PANEL_BG));
+            .border_style(Style::default().fg(self.theme.accent))
+            .style(Style::default().bg(self.theme.panel_bg));
         let inner = block.inner(popup);
         frame.render_widget(block, popup);
 
@@ -8443,21 +8446,24 @@ impl Model {
             Line::from(vec![Span::styled(
                 title_line,
                 Style::default()
-                    .fg(COLOR_ACCENT)
+                    .fg(self.theme.accent)
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(vec![Span::styled(
                 composer.target.description(),
-                Style::default().fg(COLOR_TEXT_SECONDARY),
+                Style::default().fg(self.theme.text_secondary),
             )]),
         ];
-        let header = Paragraph::new(Text::from(header_lines))
-            .style(Style::default().fg(COLOR_TEXT_PRIMARY).bg(COLOR_PANEL_BG));
+        let header = Paragraph::new(Text::from(header_lines)).style(
+            Style::default()
+                .fg(self.theme.text_primary)
+                .bg(self.theme.panel_bg),
+        );
         frame.render_widget(header, sections[0]);
 
         let text_block = Block::default()
             .padding(Padding::new(1, 1, 0, 0))
-            .style(Style::default().bg(COLOR_PANEL_BG));
+            .style(Style::default().bg(self.theme.panel_bg));
         let text_inner = text_block.inner(sections[1]);
 
         let visible_height = text_inner.height.max(1) as usize;
@@ -8477,7 +8483,11 @@ impl Model {
 
         let text = Text::from(composer.buffer.as_text());
         let paragraph = Paragraph::new(text)
-            .style(Style::default().fg(COLOR_TEXT_PRIMARY).bg(COLOR_PANEL_BG))
+            .style(
+                Style::default()
+                    .fg(self.theme.text_primary)
+                    .bg(self.theme.panel_bg),
+            )
             .block(text_block)
             .scroll((composer.scroll_row as u16, 0));
         frame.render_widget(paragraph, sections[1]);
@@ -8486,22 +8496,25 @@ impl Model {
         if composer.submitting {
             footer_lines.push(Line::from(vec![Span::styled(
                 "Posting comment…",
-                Style::default().fg(COLOR_ACCENT),
+                Style::default().fg(self.theme.accent),
             )]));
         } else {
             footer_lines.push(Line::from(vec![Span::styled(
                 "Ctrl+S submit · Esc cancel · Enter newline",
-                Style::default().fg(COLOR_TEXT_SECONDARY),
+                Style::default().fg(self.theme.text_secondary),
             )]));
         }
         if let Some(status) = composer.status() {
             footer_lines.push(Line::from(vec![Span::styled(
                 status.to_string(),
-                Style::default().fg(COLOR_ERROR),
+                Style::default().fg(self.theme.error),
             )]));
         }
-        let footer = Paragraph::new(Text::from(footer_lines))
-            .style(Style::default().fg(COLOR_TEXT_PRIMARY).bg(COLOR_PANEL_BG));
+        let footer = Paragraph::new(Text::from(footer_lines)).style(
+            Style::default()
+                .fg(self.theme.text_primary)
+                .bg(self.theme.panel_bg),
+        );
         frame.render_widget(footer, sections[2]);
 
         if !composer.submitting {
@@ -9845,7 +9858,7 @@ impl Model {
             } else {
                 let placeholder = Text::from(vec![Line::from(Span::styled(
                     "Rendering content...",
-                    Style::default().fg(COLOR_TEXT_SECONDARY),
+                    Style::default().fg(self.theme.text_secondary),
                 ))]);
                 self.content = self.compose_content(placeholder, &post);
                 self.queue_content_render(key.clone(), source);
@@ -10037,6 +10050,7 @@ impl Model {
         let post_clone = post.clone();
         let media_handle = self.media_handle.clone();
         let allow_inline_video = self.kitty_status.is_enabled();
+        let theme = self.theme;
 
         thread::spawn(move || {
             if cancel_flag.load(Ordering::SeqCst) {
@@ -10044,6 +10058,7 @@ impl Model {
             }
             let name = post_clone.name.clone();
             let result = load_media_preview(
+                &theme,
                 &post_clone,
                 cancel_flag.as_ref(),
                 media_handle,
@@ -10250,7 +10265,10 @@ impl Model {
         let full = frame.size();
         self.terminal_cols = full.width.max(1);
         self.terminal_rows = full.height.max(1);
-        frame.render_widget(Block::default().style(Style::default().bg(COLOR_BG)), full);
+        frame.render_widget(
+            Block::default().style(Style::default().bg(self.theme.background)),
+            full,
+        );
 
         if self.media_fullscreen {
             self.draw_content(frame, full);
@@ -10285,8 +10303,8 @@ impl Model {
         let status_text = status_parts.join(" · ");
         let status_line = Paragraph::new(status_text).style(
             Style::default()
-                .fg(COLOR_TEXT_PRIMARY)
-                .bg(COLOR_PANEL_FOCUSED_BG)
+                .fg(self.theme.text_primary)
+                .bg(self.theme.panel_focused_bg)
                 .add_modifier(Modifier::BOLD),
         );
         frame.render_widget(status_line, layout[0]);
@@ -10314,8 +10332,8 @@ impl Model {
         let footer = Paragraph::new(self.footer_text())
             .style(
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
-                    .bg(COLOR_PANEL_BG)
+                    .fg(self.theme.text_secondary)
+                    .bg(self.theme.panel_bg)
                     .add_modifier(Modifier::ITALIC),
             )
             .alignment(Alignment::Center)
@@ -10978,16 +10996,16 @@ impl Model {
     fn pane_block(&self, pane: Pane) -> Block<'static> {
         let focused = self.focused_pane == pane;
         let border_style = if focused {
-            Style::default().fg(COLOR_BORDER_FOCUSED)
+            Style::default().fg(self.theme.border_focused)
         } else {
-            Style::default().fg(COLOR_BORDER_IDLE)
+            Style::default().fg(self.theme.border_idle)
         };
         let title_style = if focused {
             Style::default()
-                .fg(COLOR_ACCENT)
+                .fg(self.theme.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(COLOR_TEXT_SECONDARY)
+            Style::default().fg(self.theme.text_secondary)
         };
         let title_text = if pane == Pane::Content && self.media_fullscreen {
             "Media Preview (fullscreen)"
@@ -10998,7 +11016,7 @@ impl Model {
             .title(Span::styled(title_text, title_style))
             .borders(Borders::ALL)
             .border_style(border_style)
-            .style(Style::default().bg(COLOR_PANEL_BG))
+            .style(Style::default().bg(self.theme.panel_bg))
             .padding(Padding::uniform(1))
     }
 
@@ -11006,26 +11024,26 @@ impl Model {
         let is_selected = focused && matches!(self.nav_mode, NavMode::Sorts);
         let spacing_style = if is_selected {
             Style::default()
-                .bg(COLOR_PANEL_SELECTED_BG)
-                .fg(COLOR_TEXT_PRIMARY)
+                .bg(self.theme.panel_selected_bg)
+                .fg(self.theme.text_primary)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(COLOR_TEXT_SECONDARY)
+            Style::default().fg(self.theme.text_secondary)
         };
 
         let mut entries = Vec::with_capacity(NAV_SORTS.len());
         for (idx, sort) in NAV_SORTS.iter().enumerate() {
             let is_active = self.sort == *sort;
             let mut style = Style::default().fg(if is_active {
-                COLOR_ACCENT
+                self.theme.accent
             } else {
-                COLOR_TEXT_SECONDARY
+                self.theme.text_secondary
             });
             if is_selected {
                 style = style
                     .add_modifier(Modifier::BOLD)
-                    .bg(COLOR_PANEL_SELECTED_BG)
-                    .fg(COLOR_TEXT_PRIMARY);
+                    .bg(self.theme.panel_selected_bg)
+                    .fg(self.theme.text_primary);
             }
             let marker = if is_active { "●" } else { "○" };
             let number = idx + 1;
@@ -11065,7 +11083,7 @@ impl Model {
         output.push(Line::from(vec![Span::styled(
             "Sort",
             Style::default()
-                .fg(COLOR_TEXT_SECONDARY)
+                .fg(self.theme.text_secondary)
                 .add_modifier(Modifier::BOLD),
         )]));
         output.extend(lines.into_iter().map(Line::from));
@@ -11080,23 +11098,23 @@ impl Model {
             let mut style = if is_active {
                 if focused {
                     Style::default()
-                        .bg(COLOR_PANEL_SELECTED_BG)
-                        .fg(COLOR_TEXT_PRIMARY)
+                        .bg(self.theme.panel_selected_bg)
+                        .fg(self.theme.text_primary)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
-                        .fg(COLOR_ACCENT)
+                        .fg(self.theme.accent)
                         .add_modifier(Modifier::BOLD)
                 }
             } else if focused {
                 Style::default()
-                    .bg(COLOR_PANEL_SELECTED_BG)
-                    .fg(COLOR_TEXT_PRIMARY)
+                    .bg(self.theme.panel_selected_bg)
+                    .fg(self.theme.text_primary)
             } else {
-                Style::default().fg(COLOR_TEXT_SECONDARY)
+                Style::default().fg(self.theme.text_secondary)
             };
             if !focused {
-                style = style.bg(COLOR_PANEL_BG);
+                style = style.bg(self.theme.panel_bg);
             }
             let number = idx + 1;
             let label = format!("{number} {marker} {}", comment_sort_label(*sort));
@@ -11175,12 +11193,12 @@ impl Model {
                 Line::from(vec![Span::styled(
                     "Controls",
                     Style::default()
-                        .fg(COLOR_TEXT_PRIMARY)
+                        .fg(self.theme.text_primary)
                         .add_modifier(Modifier::BOLD),
                 )]),
                 Line::from(vec![Span::styled(
                     "h/l or ←/→ switch panes · j/k move within the list (press k on first row to reach sort) · digits/Enter load selection",
-                Style::default().fg(COLOR_TEXT_SECONDARY),
+                Style::default().fg(self.theme.text_secondary),
             )]),
         ]))
             .alignment(Alignment::Left)
@@ -11202,15 +11220,15 @@ impl Model {
                 focused && matches!(self.nav_mode, NavMode::Subreddits) && self.nav_index == idx;
             let is_active = self.selected_sub == idx;
             let background = if is_selected {
-                COLOR_PANEL_SELECTED_BG
+                self.theme.panel_selected_bg
             } else {
-                COLOR_PANEL_BG
+                self.theme.panel_bg
             };
             let mut style = Style::default()
                 .fg(if is_selected || is_active {
-                    COLOR_TEXT_PRIMARY
+                    self.theme.text_primary
                 } else {
-                    COLOR_TEXT_SECONDARY
+                    self.theme.text_secondary
                 })
                 .bg(background);
             if is_selected || is_active {
@@ -11234,8 +11252,8 @@ impl Model {
             let mut lines = vec![Line::from(Span::styled(
                 "No subreddits",
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
-                    .bg(COLOR_PANEL_BG)
+                    .fg(self.theme.text_secondary)
+                    .bg(self.theme.panel_bg)
                     .add_modifier(Modifier::ITALIC),
             ))];
             pad_lines_to_width(&mut lines, list_area.width);
@@ -11283,12 +11301,12 @@ impl Model {
             let selected = self.banner_selected();
             let highlight = focused && selected;
             let background = if highlight {
-                COLOR_PANEL_SELECTED_BG
+                self.theme.panel_selected_bg
             } else {
-                COLOR_PANEL_BG
+                self.theme.panel_bg
             };
             let mut line_style = Style::default()
-                .fg(COLOR_ACCENT)
+                .fg(self.theme.accent)
                 .bg(background)
                 .add_modifier(Modifier::BOLD);
             if installing {
@@ -11306,13 +11324,13 @@ impl Model {
             };
             let mut detail_style = Style::default().bg(background);
             detail_style = detail_style.fg(if highlight {
-                COLOR_TEXT_PRIMARY
+                self.theme.text_primary
             } else {
-                COLOR_TEXT_SECONDARY
+                self.theme.text_secondary
             });
             detail_style = detail_style.add_modifier(Modifier::ITALIC);
             if installing {
-                detail_style = detail_style.fg(COLOR_ACCENT);
+                detail_style = detail_style.fg(self.theme.accent);
             }
             lines.push(Line::from(Span::styled(
                 detail_text.to_string(),
@@ -11338,13 +11356,13 @@ impl Model {
             header_lines.push(Line::from(Span::styled(
                 format!("{} Loading new posts…", self.spinner.frame()),
                 Style::default()
-                    .fg(COLOR_ACCENT)
-                    .bg(COLOR_PANEL_BG)
+                    .fg(self.theme.accent)
+                    .bg(self.theme.panel_bg)
                     .add_modifier(Modifier::BOLD),
             )));
             header_lines.push(Line::from(Span::styled(
                 String::new(),
-                Style::default().bg(COLOR_PANEL_BG),
+                Style::default().bg(self.theme.panel_bg),
             )));
             pad_lines_to_width(&mut header_lines, pane_width);
             items.push(ListItem::new(header_lines));
@@ -11356,28 +11374,28 @@ impl Model {
             let selected = idx == self.selected_post && !self.banner_selected();
             let highlight = focused && selected;
             let background = if highlight {
-                COLOR_PANEL_SELECTED_BG
+                self.theme.panel_selected_bg
             } else {
-                COLOR_PANEL_BG
+                self.theme.panel_bg
             };
 
             let primary_color = if highlight {
-                COLOR_ACCENT
+                self.theme.accent
             } else if focused || selected {
-                COLOR_TEXT_PRIMARY
+                self.theme.text_primary
             } else {
-                COLOR_TEXT_SECONDARY
+                self.theme.text_secondary
             };
             let identity_style = Style::default().fg(primary_color).bg(background);
             let mut title_style = Style::default()
                 .fg(if focused {
-                    COLOR_TEXT_PRIMARY
+                    self.theme.text_primary
                 } else {
-                    COLOR_TEXT_SECONDARY
+                    self.theme.text_secondary
                 })
                 .bg(background);
             if selected && !focused {
-                title_style = title_style.fg(COLOR_TEXT_PRIMARY);
+                title_style = title_style.fg(self.theme.text_primary);
             }
             if highlight {
                 title_style = title_style.add_modifier(Modifier::BOLD);
@@ -11428,9 +11446,9 @@ impl Model {
                     format!("{} Formatting post…", self.spinner.frame()),
                     Style::default()
                         .fg(if highlight || focused {
-                            COLOR_TEXT_PRIMARY
+                            self.theme.text_primary
                         } else {
-                            COLOR_TEXT_SECONDARY
+                            self.theme.text_secondary
                         })
                         .bg(background),
                 )));
@@ -11446,8 +11464,8 @@ impl Model {
                 let mut lines = vec![Line::from(Span::styled(
                     format!("{} Loading feed...", self.spinner.frame()),
                     Style::default()
-                        .fg(COLOR_ACCENT)
-                        .bg(COLOR_PANEL_BG)
+                        .fg(self.theme.accent)
+                        .bg(self.theme.panel_bg)
                         .add_modifier(Modifier::BOLD),
                 ))];
                 pad_lines_to_width(&mut lines, pane_width);
@@ -11456,8 +11474,8 @@ impl Model {
                 let mut lines = vec![Line::from(Span::styled(
                     "No posts loaded yet.",
                     Style::default()
-                        .fg(COLOR_TEXT_SECONDARY)
-                        .bg(COLOR_PANEL_BG)
+                        .fg(self.theme.text_secondary)
+                        .bg(self.theme.panel_bg)
                         .add_modifier(Modifier::ITALIC),
                 ))];
                 pad_lines_to_width(&mut lines, pane_width);
@@ -11568,7 +11586,7 @@ impl Model {
                 let offset = lines.len();
                 lines.push(Line::from(Span::styled(
                     "Loading preview...",
-                    Style::default().fg(COLOR_TEXT_SECONDARY),
+                    Style::default().fg(self.theme.text_secondary),
                 )));
                 self.media_layouts.insert(
                     key.clone(),
@@ -11605,7 +11623,7 @@ impl Model {
             }
             lines.push(Line::from(Span::styled(
                 "Loading preview...",
-                Style::default().fg(COLOR_TEXT_SECONDARY),
+                Style::default().fg(self.theme.text_secondary),
             )));
             self.media_layouts.insert(
                 key.clone(),
@@ -11630,7 +11648,7 @@ impl Model {
             return Text::from(vec![
                 Line::from(Span::styled(
                     "Inline previews are disabled in this terminal.",
-                    Style::default().fg(COLOR_TEXT_SECONDARY),
+                    Style::default().fg(self.theme.text_secondary),
                 )),
                 Line::default(),
                 self.fullscreen_hint_line(),
@@ -11648,7 +11666,7 @@ impl Model {
                 return Text::from(vec![
                     Line::from(Span::styled(
                         "Video playback runs in the inline view. Press f to return.",
-                        Style::default().fg(COLOR_TEXT_SECONDARY),
+                        Style::default().fg(self.theme.text_secondary),
                     )),
                     Line::default(),
                     self.fullscreen_hint_line(),
@@ -11675,7 +11693,7 @@ impl Model {
                 );
                 return Text::from(vec![Line::from(Span::styled(
                     "Loading preview...",
-                    Style::default().fg(COLOR_TEXT_SECONDARY),
+                    Style::default().fg(self.theme.text_secondary),
                 ))]);
             }
 
@@ -11699,7 +11717,7 @@ impl Model {
                 lines.push(Line::default());
                 lines.push(Line::from(Span::styled(
                     "Preview scaled to fit current viewport.",
-                    Style::default().fg(COLOR_TEXT_SECONDARY),
+                    Style::default().fg(self.theme.text_secondary),
                 )));
             }
             lines.push(Line::default());
@@ -11711,7 +11729,7 @@ impl Model {
             return Text::from(vec![
                 Line::from(Span::styled(
                     "Failed to load preview.",
-                    Style::default().fg(COLOR_ERROR),
+                    Style::default().fg(self.theme.error),
                 )),
                 Line::default(),
                 self.fullscreen_hint_line(),
@@ -11731,7 +11749,7 @@ impl Model {
         Text::from(vec![
             Line::from(Span::styled(
                 "Loading preview...",
-                Style::default().fg(COLOR_TEXT_SECONDARY),
+                Style::default().fg(self.theme.text_secondary),
             )),
             Line::default(),
             self.fullscreen_hint_line(),
@@ -11742,7 +11760,7 @@ impl Model {
         Line::from(Span::styled(
             "Press f to return · j/k scroll",
             Style::default()
-                .fg(COLOR_TEXT_SECONDARY)
+                .fg(self.theme.text_secondary)
                 .add_modifier(Modifier::ITALIC),
         ))
     }
@@ -11814,7 +11832,11 @@ impl Model {
                 self.needs_kitty_flush = true;
             }
             let paragraph = Paragraph::new(self.content.clone())
-                .style(Style::default().bg(COLOR_PANEL_BG).fg(COLOR_TEXT_PRIMARY))
+                .style(
+                    Style::default()
+                        .bg(self.theme.panel_bg)
+                        .fg(self.theme.text_primary),
+                )
                 .wrap(Wrap { trim: false })
                 .scroll((self.content_scroll, 0));
             frame.render_widget(paragraph, area);
@@ -11856,9 +11878,9 @@ impl Model {
             Paragraph::new(sort_lines)
                 .wrap(Wrap { trim: true })
                 .style(Style::default().bg(if sort_focused {
-                    COLOR_PANEL_SELECTED_BG
+                    self.theme.panel_selected_bg
                 } else {
-                    COLOR_PANEL_BG
+                    self.theme.panel_bg
                 }));
         frame.render_widget(sort_paragraph, layout[0]);
 
@@ -11876,8 +11898,8 @@ impl Model {
             self.comment_status.clone()
         };
         let status_style = Style::default()
-            .fg(COLOR_TEXT_SECONDARY)
-            .bg(COLOR_PANEL_BG)
+            .fg(self.theme.text_secondary)
+            .bg(self.theme.panel_bg)
             .add_modifier(Modifier::BOLD);
         let mut status_lines = wrap_plain(&comment_status, width, status_style);
         status_lines.push(Line::from(Span::styled(String::new(), status_style)));
@@ -11900,13 +11922,13 @@ impl Model {
             let selected = visible_idx == self.selected_comment && !self.comment_sort_selected;
             let highlight = focused && selected;
             let background = if highlight {
-                COLOR_PANEL_SELECTED_BG
+                self.theme.panel_selected_bg
             } else {
-                COLOR_PANEL_BG
+                self.theme.panel_bg
             };
 
             let mut meta_style = Style::default()
-                .fg(comment_depth_color(comment.depth))
+                .fg(self.comment_depth_color(comment.depth))
                 .bg(background);
             if highlight {
                 meta_style = meta_style.add_modifier(Modifier::BOLD);
@@ -11915,9 +11937,9 @@ impl Model {
             }
 
             let body_color = if highlight || focused || selected {
-                COLOR_TEXT_PRIMARY
+                self.theme.text_primary
             } else {
-                COLOR_TEXT_SECONDARY
+                self.theme.text_secondary
             };
             let body_style = Style::default().fg(body_color).bg(background);
 
@@ -11960,12 +11982,12 @@ impl Model {
                     .title(Span::styled(
                         "Guided Menu",
                         Style::default()
-                            .fg(COLOR_ACCENT)
+                            .fg(self.theme.accent)
                             .add_modifier(Modifier::BOLD),
                     ))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(COLOR_ACCENT))
-                    .style(Style::default().bg(COLOR_PANEL_BG)),
+                    .border_style(Style::default().fg(self.theme.accent))
+                    .style(Style::default().bg(self.theme.panel_bg)),
             )
             .wrap(Wrap { trim: false });
         frame.render_widget(menu, popup_area);
@@ -11976,10 +11998,10 @@ impl Model {
         let mut spans = Vec::new();
         let indicator_style = if is_active {
             Style::default()
-                .fg(COLOR_ACCENT)
+                .fg(self.theme.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(COLOR_TEXT_SECONDARY)
+            Style::default().fg(self.theme.text_secondary)
         };
         spans.push(Span::styled(
             if is_active { ">" } else { " " }.to_string(),
@@ -11991,11 +12013,11 @@ impl Model {
             MenuField::Save => {
                 let button_style = if is_active {
                     Style::default()
-                        .fg(COLOR_ACCENT)
+                        .fg(self.theme.accent)
                         .add_modifier(Modifier::BOLD | Modifier::REVERSED)
                 } else {
                     Style::default()
-                        .fg(COLOR_TEXT_SECONDARY)
+                        .fg(self.theme.text_secondary)
                         .add_modifier(Modifier::BOLD)
                 };
                 spans.push(Span::styled("[ Save & Close ]".to_string(), button_style));
@@ -12004,11 +12026,11 @@ impl Model {
             MenuField::OpenLink => {
                 let button_style = if is_active {
                     Style::default()
-                        .fg(COLOR_ACCENT)
+                        .fg(self.theme.accent)
                         .add_modifier(Modifier::BOLD | Modifier::REVERSED)
                 } else {
                     Style::default()
-                        .fg(COLOR_TEXT_SECONDARY)
+                        .fg(self.theme.text_secondary)
                         .add_modifier(Modifier::BOLD)
                 };
                 let label = if self.menu_form.auth_pending {
@@ -12021,11 +12043,11 @@ impl Model {
             _ => {
                 let label_style = if is_active {
                     Style::default()
-                        .fg(COLOR_ACCENT)
+                        .fg(self.theme.accent)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
-                        .fg(COLOR_TEXT_SECONDARY)
+                        .fg(self.theme.text_secondary)
                         .add_modifier(Modifier::BOLD)
                 };
                 spans.push(Span::styled(field.title().to_string(), label_style));
@@ -12033,11 +12055,11 @@ impl Model {
 
                 let display = self.menu_form.display_value(field);
                 let value_style = if display == "(not set)" {
-                    Style::default().fg(COLOR_TEXT_SECONDARY)
+                    Style::default().fg(self.theme.text_secondary)
                 } else if is_active {
-                    Style::default().fg(COLOR_ACCENT)
+                    Style::default().fg(self.theme.accent)
                 } else {
-                    Style::default().fg(COLOR_TEXT_PRIMARY)
+                    Style::default().fg(self.theme.text_primary)
                 };
                 spans.push(Span::styled(display, value_style));
             }
@@ -12059,7 +12081,7 @@ impl Model {
         lines.push(Line::from(vec![Span::styled(
             "Account Manager".to_string(),
             Style::default()
-                .fg(COLOR_ACCENT)
+                .fg(self.theme.accent)
                 .add_modifier(Modifier::BOLD),
         )]));
         lines.push(Line::default());
@@ -12068,21 +12090,21 @@ impl Model {
             lines.push(Line::from(vec![Span::styled(
                 "No Reddit accounts saved.".to_string(),
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
+                    .fg(self.theme.text_secondary)
                     .add_modifier(Modifier::ITALIC),
             )]));
         } else {
             for (idx, entry) in self.menu_accounts.iter().enumerate() {
                 let selected = self.menu_account_index == idx;
                 let indicator_style = Style::default().fg(if selected {
-                    COLOR_ACCENT
+                    self.theme.accent
                 } else {
-                    COLOR_TEXT_SECONDARY
+                    self.theme.text_secondary
                 });
                 let mut label_style = Style::default().fg(if selected {
-                    COLOR_TEXT_PRIMARY
+                    self.theme.text_primary
                 } else {
-                    COLOR_TEXT_SECONDARY
+                    self.theme.text_secondary
                 });
                 if selected {
                     label_style = label_style.add_modifier(Modifier::BOLD);
@@ -12109,9 +12131,9 @@ impl Model {
 
         let add_selected = self.menu_account_index == positions.add;
         let mut add_style = Style::default().fg(if add_selected {
-            COLOR_ACCENT
+            self.theme.accent
         } else {
-            COLOR_TEXT_SECONDARY
+            self.theme.text_secondary
         });
         if add_selected {
             add_style = add_style.add_modifier(Modifier::BOLD);
@@ -12126,7 +12148,7 @@ impl Model {
         lines.push(Line::default());
         lines.push(Line::from(vec![Span::styled(
             "Stay in the loop with the community:".to_string(),
-            Style::default().fg(COLOR_TEXT_SECONDARY),
+            Style::default().fg(self.theme.text_secondary),
         )]));
         let join_index = positions.join;
         let join_selected = self.menu_account_index == join_index;
@@ -12140,18 +12162,18 @@ impl Model {
         };
         let joined = join_state.is_some_and(|state| state.joined);
         let join_indicator_style = Style::default().fg(if join_selected {
-            COLOR_ACCENT
+            self.theme.accent
         } else if joined {
-            COLOR_SUCCESS
+            self.theme.success
         } else {
-            COLOR_TEXT_SECONDARY
+            self.theme.text_secondary
         });
         let mut join_label_style = Style::default().fg(if joined {
-            COLOR_SUCCESS
+            self.theme.success
         } else if join_selected {
-            COLOR_ACCENT
+            self.theme.accent
         } else {
-            COLOR_TEXT_SECONDARY
+            self.theme.text_secondary
         });
         if join_selected && !joined {
             join_label_style = join_label_style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
@@ -12170,28 +12192,28 @@ impl Model {
         let (join_hint, join_hint_style) = match (join_state, self.active_account_id()) {
             (Some(state), _) if state.last_error.is_some() => (
                 state.last_error.clone().unwrap(),
-                Style::default().fg(COLOR_ERROR),
+                Style::default().fg(self.theme.error),
             ),
             (Some(state), _) if state.pending => (
                 "Request sent… hang tight.".to_string(),
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
+                    .fg(self.theme.text_secondary)
                     .add_modifier(Modifier::ITALIC),
             ),
             (Some(state), _) if state.joined => (
                 "Already subscribed. Thanks for supporting the community!".to_string(),
-                Style::default().fg(COLOR_SUCCESS),
+                Style::default().fg(self.theme.success),
             ),
             (_, Some(_)) => (
                 "Press Enter to subscribe using your active account.".to_string(),
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
+                    .fg(self.theme.text_secondary)
                     .add_modifier(Modifier::ITALIC),
             ),
             _ => (
                 "Add an account to enable one-click subscribe.".to_string(),
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
+                    .fg(self.theme.text_secondary)
                     .add_modifier(Modifier::ITALIC),
             ),
         };
@@ -12204,16 +12226,16 @@ impl Model {
                 let selected = self.menu_account_index == release_idx;
                 let highlight_unread = self.release_note_unread && !selected;
                 let indicator_style = Style::default().fg(if selected || highlight_unread {
-                    COLOR_ACCENT
+                    self.theme.accent
                 } else {
-                    COLOR_TEXT_SECONDARY
+                    self.theme.text_secondary
                 });
                 let mut label_style = Style::default().fg(if selected {
-                    COLOR_TEXT_PRIMARY
+                    self.theme.text_primary
                 } else if highlight_unread {
-                    COLOR_ACCENT
+                    self.theme.accent
                 } else {
-                    COLOR_TEXT_SECONDARY
+                    self.theme.text_secondary
                 });
                 if selected || highlight_unread {
                     label_style = label_style.add_modifier(Modifier::BOLD);
@@ -12228,11 +12250,11 @@ impl Model {
                 ]));
                 let summary_style = Style::default()
                     .fg(if selected {
-                        COLOR_TEXT_PRIMARY
+                        self.theme.text_primary
                     } else if highlight_unread {
-                        COLOR_ACCENT
+                        self.theme.accent
                     } else {
-                        COLOR_TEXT_SECONDARY
+                        self.theme.text_secondary
                     })
                     .add_modifier(Modifier::ITALIC);
                 lines.push(Line::from(vec![Span::styled(
@@ -12247,14 +12269,14 @@ impl Model {
         let update_index = positions.update_check;
         let update_selected = self.menu_account_index == update_index;
         let update_indicator_style = Style::default().fg(if update_selected {
-            COLOR_ACCENT
+            self.theme.accent
         } else {
-            COLOR_TEXT_SECONDARY
+            self.theme.text_secondary
         });
         let mut update_label_style = Style::default().fg(if update_selected {
-            COLOR_ACCENT
+            self.theme.accent
         } else {
-            COLOR_TEXT_SECONDARY
+            self.theme.text_secondary
         });
         if update_selected {
             update_label_style = update_label_style.add_modifier(Modifier::BOLD);
@@ -12265,11 +12287,11 @@ impl Model {
             .is_some_and(|latest| latest > &self.current_version);
         let summary_style = if has_update {
             Style::default()
-                .fg(COLOR_ACCENT)
+                .fg(self.theme.accent)
                 .add_modifier(Modifier::BOLD | Modifier::ITALIC)
         } else {
             Style::default()
-                .fg(COLOR_TEXT_SECONDARY)
+                .fg(self.theme.text_secondary)
                 .add_modifier(Modifier::ITALIC)
         };
         lines.push(Line::from(vec![
@@ -12285,14 +12307,14 @@ impl Model {
         if let Some(install_idx) = positions.install {
             let install_selected = self.menu_account_index == install_idx;
             let install_indicator_style = Style::default().fg(if install_selected {
-                COLOR_ACCENT
+                self.theme.accent
             } else {
-                COLOR_TEXT_SECONDARY
+                self.theme.text_secondary
             });
             let mut install_label_style = Style::default().fg(if install_selected {
-                COLOR_ACCENT
+                self.theme.accent
             } else {
-                COLOR_TEXT_SECONDARY
+                self.theme.text_secondary
             });
             if install_selected {
                 install_label_style = install_label_style.add_modifier(Modifier::BOLD);
@@ -12320,7 +12342,7 @@ impl Model {
                 Span::styled(install_text, install_label_style),
             ]));
             let hint_style = Style::default()
-                .fg(COLOR_TEXT_SECONDARY)
+                .fg(self.theme.text_secondary)
                 .add_modifier(Modifier::ITALIC);
             let hint_text = if self.update_install_in_progress {
                 "Installer running in background…"
@@ -12341,14 +12363,14 @@ impl Model {
 
         let github_selected = self.menu_account_index == github_index;
         let github_indicator_style = Style::default().fg(if github_selected {
-            COLOR_ACCENT
+            self.theme.accent
         } else {
-            COLOR_TEXT_SECONDARY
+            self.theme.text_secondary
         });
         let mut github_label_style = Style::default().fg(if github_selected {
-            COLOR_ACCENT
+            self.theme.accent
         } else {
-            COLOR_TEXT_SECONDARY
+            self.theme.text_secondary
         });
         if github_selected {
             github_label_style = github_label_style.add_modifier(Modifier::BOLD);
@@ -12356,14 +12378,14 @@ impl Model {
 
         let support_selected = self.menu_account_index == support_index;
         let support_indicator_style = Style::default().fg(if support_selected {
-            COLOR_ACCENT
+            self.theme.accent
         } else {
-            COLOR_TEXT_SECONDARY
+            self.theme.text_secondary
         });
         let mut support_label_style = Style::default().fg(if support_selected {
-            COLOR_ACCENT
+            self.theme.accent
         } else {
-            COLOR_TEXT_SECONDARY
+            self.theme.text_secondary
         });
         if support_selected {
             support_label_style = support_label_style.add_modifier(Modifier::BOLD);
@@ -12382,7 +12404,7 @@ impl Model {
             ),
             Span::styled(
                 PROJECT_LINK_URL.to_string(),
-                Style::default().fg(COLOR_ACCENT),
+                Style::default().fg(self.theme.accent),
             ),
         ]));
         lines.push(Line::from(vec![
@@ -12397,13 +12419,13 @@ impl Model {
             ),
             Span::styled(
                 SUPPORT_LINK_URL.to_string(),
-                Style::default().fg(COLOR_ACCENT),
+                Style::default().fg(self.theme.accent),
             ),
         ]));
         lines.push(Line::default());
         lines.push(Line::from(vec![Span::styled(
             "Controls: j/k select · Enter switch/select · a add account · Esc/m close".to_string(),
-            Style::default().fg(COLOR_TEXT_SECONDARY),
+            Style::default().fg(self.theme.text_secondary),
         )]));
 
         Text::from(lines)
@@ -12414,7 +12436,7 @@ impl Model {
         lines.push(Line::from(vec![Span::styled(
             "Setup & Login Guide".to_string(),
             Style::default()
-                .fg(COLOR_ACCENT)
+                .fg(self.theme.accent)
                 .add_modifier(Modifier::BOLD),
         )]));
         lines.push(Line::default());
@@ -12437,7 +12459,7 @@ impl Model {
         lines.push(Line::from(vec![Span::styled(
             "Credentials".to_string(),
             Style::default()
-                .fg(COLOR_ACCENT)
+                .fg(self.theme.accent)
                 .add_modifier(Modifier::BOLD),
         )]));
         let mut fields = vec![
@@ -12457,7 +12479,7 @@ impl Model {
             lines.push(Line::from(vec![Span::styled(
                 "Authorization Link".to_string(),
                 Style::default()
-                    .fg(COLOR_ACCENT)
+                    .fg(self.theme.accent)
                     .add_modifier(Modifier::BOLD),
             )]));
             let message = if self.menu_form.auth_pending {
@@ -12467,7 +12489,7 @@ impl Model {
             };
             lines.push(Line::from(vec![Span::styled(
                 message,
-                Style::default().fg(COLOR_ACCENT),
+                Style::default().fg(self.theme.accent),
             )]));
             if self.menu_form.auth_pending {
                 lines.push(Line::from(vec![Span::raw(
@@ -12484,9 +12506,9 @@ impl Model {
             lines.push(Line::default());
             let lowered = status.to_lowercase();
             let style = if lowered.contains("fail") || lowered.contains("error") {
-                Style::default().fg(COLOR_ERROR)
+                Style::default().fg(self.theme.error)
             } else {
-                Style::default().fg(COLOR_SUCCESS)
+                Style::default().fg(self.theme.success)
             };
             lines.push(Line::from(vec![Span::styled(status.clone(), style)]));
         }
@@ -12499,41 +12521,41 @@ impl Model {
             lines.push(Line::from(vec![Span::styled(
                 note.title.clone(),
                 Style::default()
-                    .fg(COLOR_ACCENT)
+                    .fg(self.theme.accent)
                     .add_modifier(Modifier::BOLD),
             )]));
             lines.push(Line::default());
             lines.push(Line::from(vec![Span::styled(
                 format!("Version {}", note.version),
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
+                    .fg(self.theme.text_secondary)
                     .add_modifier(Modifier::ITALIC),
             )]));
             lines.push(Line::default());
             for detail in &note.details {
                 lines.push(Line::from(vec![
-                    Span::styled("- ".to_string(), Style::default().fg(COLOR_ACCENT)),
-                    Span::styled(detail.clone(), Style::default().fg(COLOR_TEXT_PRIMARY)),
+                    Span::styled("- ".to_string(), Style::default().fg(self.theme.accent)),
+                    Span::styled(detail.clone(), Style::default().fg(self.theme.text_primary)),
                 ]));
             }
             lines.push(Line::default());
             lines.push(Line::from(vec![Span::styled(
                 "Press Enter or o to open the full release notes in your browser.",
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
+                    .fg(self.theme.text_secondary)
                     .add_modifier(Modifier::ITALIC),
             )]));
             lines.push(Line::from(vec![Span::styled(
                 "Press Esc to return to the account list.",
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
+                    .fg(self.theme.text_secondary)
                     .add_modifier(Modifier::ITALIC),
             )]));
         } else {
             lines.push(Line::from(vec![Span::styled(
                 "No release notes available right now.",
                 Style::default()
-                    .fg(COLOR_TEXT_SECONDARY)
+                    .fg(self.theme.text_secondary)
                     .add_modifier(Modifier::ITALIC),
             )]));
         }
@@ -12756,7 +12778,8 @@ mod tests {
 
     #[test]
     fn kitty_placeholder_matches_dimensions() {
-        let placeholder = kitty_placeholder_text(4, 2, 0, "example");
+        let placeholder =
+            kitty_placeholder_text(&crate::theme::Palette::terminal_default(), 4, 2, 0, "example");
         assert_eq!(placeholder.lines.len(), 3);
         assert_eq!(placeholder.lines[0].spans[0].content.as_ref(), "    ");
         assert_eq!(

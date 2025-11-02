@@ -10,6 +10,7 @@ pub mod reddit;
 pub mod release_notes;
 pub mod session;
 pub mod storage;
+pub mod theme;
 pub mod ui;
 pub mod update;
 pub mod video;

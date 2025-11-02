@@ -9,6 +9,7 @@ use crate::media;
 use crate::reddit;
 use crate::session;
 use crate::storage;
+use crate::theme;
 use crate::ui;
 
 pub fn run() -> Result<()> {
@@ -153,6 +154,7 @@ pub fn run() -> Result<()> {
         store: store.clone(),
         session_manager: session_manager.clone(),
         fetch_subreddits_on_start,
+        theme: theme::palette_for(theme),
     };
 
     let mut model = ui::Model::new(options);
