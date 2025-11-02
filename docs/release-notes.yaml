@@ -1,4 +1,13 @@
 release:
+  - version: "0.2.8"
+    title: "What's new in v0.2.8"
+    banner: "Browse Reddit galleries without leaving the terminal."
+    summary: "Cycle through gallery posts inline with kitty previews and quick keyboard shortcuts."
+    url: "https://github.com/ck-zhang/reddix/releases/tag/v0.2.8"
+    details:
+      - "Gallery posts now render inline; press , or . to jump between images."
+      - "Action menu includes next/previous gallery entries for keyboard navigation."
+      - "Gallery images surface in the links menu for one-tap opening in your browser."
   - version: "0.2.7"
     title: "What's new in v0.2.7"
     banner: "Default theme now matches your terminal colors."

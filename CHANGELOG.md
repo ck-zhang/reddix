@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 - Nothing yet.
 
+## [0.2.8] - 2025-10-30
+### Added
+- Inline gallery support for multi-image posts with `,`/`.` cycling and action menu entries.
+### Changed
+- Gallery images now appear in the links browser so you can open originals directly from Reddix.
+
 ## [0.2.7] - 2025-10-29
 ### Changed
 - `ui.theme = default` now follows your terminal colors out of the box.
@@ -152,7 +158,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 - Initial release with the polished login workflow, refreshed caching, and improved feed pagination.
 
-[Unreleased]: https://github.com/ck-zhang/reddix/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/ck-zhang/reddix/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/ck-zhang/reddix/compare/v0.2.7...v0.2.8
+[0.2.7]: https://github.com/ck-zhang/reddix/compare/v0.2.6...v0.2.7
 [0.2.3]: https://github.com/ck-zhang/reddix/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/ck-zhang/reddix/compare/v0.2.1...v0.2.2
 [0.1.21]: https://github.com/ck-zhang/reddix/compare/v0.1.20...v0.1.21
