@@ -4,13 +4,11 @@ This document tracks community requests and ideas for future Reddix releases.
 
 ## Active Requests
 
-- Gallery support for multi-image posts.
 - Layout option with comments in the middle pane.
 - Compact split view for small screens.
 - Comment pane keyword search.
 - Cleaner feed metadata presentation.
 - Shortcut customization for non-QWERTY layouts.
-- Comment creation support in the TUI.
 - Add link yanking so numbered hints jump to external open actions.
 - Support additional inline image protocols beyond kitty graphics.
 - Restore optional clipboard copy for outbound links.
@@ -21,6 +19,8 @@ This document tracks community requests and ideas for future Reddix releases.
 
 - Improved inline image handling so cramped terminals no longer overflow previews.
 - Added inline Kitty/mpv video playback embedded directly in the post content for hosted Reddit videos.
+- Gallery support for Reddit's multi-image posts with inline cycling.
+- Comment creation flow with compose dialog, root placeholder, and Ctrl+S submission.
 
 ## Backlog Notes
 - Support user-selectable theme presets beyond the default terminal palette.

@@ -230,6 +230,8 @@ enum ActionMenuAction {
     OpenNavigation,
     ToggleFullscreen,
     ComposeComment,
+    GalleryPrevious,
+    GalleryNext,
 }
 
 #[derive(Clone)]
@@ -388,8 +390,10 @@ struct MediaPreview {
     limited_cols: bool,
     limited_rows: bool,
     video: Option<VideoPreview>,
+    gallery: Option<GalleryRender>,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum MediaLoadOutcome {
     Ready(MediaPreview),
     Absent,
@@ -428,11 +432,66 @@ impl MediaPreview {
     fn has_video(&self) -> bool {
         self.video.is_some()
     }
+
+    fn gallery(&self) -> Option<&GalleryRender> {
+        self.gallery.as_ref()
+    }
 }
 
 #[derive(Clone)]
 struct VideoPreview {
     source: video::VideoSource,
+}
+
+#[derive(Clone)]
+struct GalleryRender {
+    index: usize,
+    total: usize,
+    label: String,
+}
+
+#[derive(Clone)]
+struct GalleryItem {
+    url: String,
+    width: i64,
+    height: i64,
+    label: String,
+}
+
+#[derive(Clone)]
+struct GalleryState {
+    items: Vec<GalleryItem>,
+    index: usize,
+}
+
+#[derive(Clone)]
+struct GalleryRequest {
+    item: GalleryItem,
+    index: usize,
+    total: usize,
+}
+
+impl GalleryState {
+    fn clamp_index(&mut self) {
+        if self.items.is_empty() {
+            self.index = 0;
+        } else if self.index >= self.items.len() {
+            self.index = self.items.len() - 1;
+        }
+    }
+
+    fn current(&self) -> Option<&GalleryItem> {
+        if self.items.is_empty() {
+            None
+        } else {
+            let idx = self.index.min(self.items.len().saturating_sub(1));
+            self.items.get(idx)
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.items.len()
+    }
 }
 
 #[derive(Clone)]
@@ -1830,6 +1889,21 @@ fn make_preview(post: reddit::Post) -> PostPreview {
 
     body.push('\n');
 
+    let gallery_items = gallery_items_from_post(&post);
+    if !gallery_items.is_empty() {
+        for (idx, item) in gallery_items.iter().enumerate() {
+            if links.iter().any(|entry| entry.url == item.url) {
+                continue;
+            }
+            let label = if gallery_items.len() > 1 {
+                format!("Gallery image {}", idx + 1)
+            } else {
+                "Gallery image".to_string()
+            };
+            links.push(LinkEntry::new(label, item.url.clone()));
+        }
+    }
+
     PostPreview {
         title: post.title.clone(),
         body,
@@ -1846,6 +1920,7 @@ fn content_from_post(post: &PostPreview) -> String {
 fn load_media_preview(
     theme: &crate::theme::Palette,
     post: &reddit::Post,
+    gallery: Option<GalleryRequest>,
     cancel_flag: &AtomicBool,
     media_handle: Option<media::Handle>,
     max_cols: i32,
@@ -1858,8 +1933,6 @@ fn load_media_preview(
         return Ok(MediaLoadOutcome::Deferred);
     }
 
-    // TODO gallery support
-
     let capped_cols = if max_cols > MAX_IMAGE_COLS {
         max_cols.max(1)
     } else {
@@ -1871,7 +1944,11 @@ fn load_media_preview(
         max_rows.clamp(1, MAX_IMAGE_ROWS)
     };
 
-    let video_source = video::find_video_source(post);
+    let video_source = if gallery.is_some() {
+        None
+    } else {
+        video::find_video_source(post)
+    };
 
     if allow_inline_video {
         if let Some(video_source) = video_source.clone() {
@@ -1901,15 +1978,44 @@ fn load_media_preview(
                 video: Some(VideoPreview {
                     source: video_source,
                 }),
+                gallery: None,
             }));
         }
     }
 
     let video_preview = video_source.map(|source| VideoPreview { source });
 
-    let source = match select_preview_source(post) {
-        Some(src) => src,
-        None => return Ok(MediaLoadOutcome::Absent),
+    let (source, gallery_render) = match gallery {
+        Some(request) => {
+            let total = request.total.max(1);
+            let clamped_index = request.index.min(total.saturating_sub(1));
+            let mut width = request.item.width;
+            if width <= 0 {
+                width = TARGET_PREVIEW_WIDTH_PX;
+            }
+            let mut height = request.item.height;
+            if height <= 0 {
+                height = ((width * 9) / 16).max(1);
+            }
+            let src = reddit::PreviewSource {
+                url: request.item.url.clone(),
+                width,
+                height,
+            };
+            let render = GalleryRender {
+                index: clamped_index,
+                total,
+                label: request.item.label.clone(),
+            };
+            (src, Some(render))
+        }
+        None => {
+            let src = match select_preview_source(post) {
+                Some(src) => src,
+                None => return Ok(MediaLoadOutcome::Absent),
+            };
+            (src, None)
+        }
     };
 
     if cancel_flag.load(Ordering::SeqCst) {
@@ -1917,10 +2023,21 @@ fn load_media_preview(
     }
 
     let url = source.url.clone();
+    let placeholder_label = match &gallery_render {
+        Some(render) => {
+            if render.total > 1 {
+                format!("{} ({}/{})", render.label, render.index + 1, render.total)
+            } else {
+                render.label.clone()
+            }
+        }
+        None => image_label(&url),
+    };
+
     if !is_supported_preview_url(&url) {
         let fallback = indent_media_preview(&format!(
             "[preview omitted: unsupported media — {}]",
-            image_label(&url)
+            placeholder_label
         ));
         return Ok(MediaLoadOutcome::Ready(MediaPreview {
             placeholder: text_from_string(fallback),
@@ -1930,6 +2047,7 @@ fn load_media_preview(
             limited_cols: false,
             limited_rows: false,
             video: video_preview.clone(),
+            gallery: gallery_render.clone(),
         }));
     }
 
@@ -1984,6 +2102,7 @@ fn load_media_preview(
             limited_cols,
             limited_rows,
             video: video_preview.clone(),
+            gallery: gallery_render.clone(),
         }));
     }
 
@@ -1991,7 +2110,7 @@ fn load_media_preview(
     if cancel_flag.load(Ordering::SeqCst) {
         return Ok(MediaLoadOutcome::Deferred);
     }
-    let placeholder = kitty_placeholder_text(theme, cols, rows, MEDIA_INDENT, &label);
+    let placeholder = kitty_placeholder_text(theme, cols, rows, MEDIA_INDENT, &placeholder_label);
     Ok(MediaLoadOutcome::Ready(MediaPreview {
         placeholder,
         kitty: Some(kitty),
@@ -2000,6 +2119,7 @@ fn load_media_preview(
         limited_cols,
         limited_rows,
         video: video_preview,
+        gallery: gallery_render,
     }))
 }
 
@@ -2120,6 +2240,14 @@ fn kitty_image_id(post_name: &str, url: &str) -> u32 {
 }
 
 fn select_preview_source(post: &reddit::Post) -> Option<reddit::PreviewSource> {
+    if let Some(item) = gallery_items_from_post(post).into_iter().next() {
+        return Some(reddit::PreviewSource {
+            url: item.url,
+            width: item.width,
+            height: item.height,
+        });
+    }
+
     post.preview
         .images
         .iter()
@@ -2568,6 +2696,96 @@ fn image_label(url: &str) -> String {
         })
         .filter(|label| !label.is_empty())
         .unwrap_or_else(|| "media".to_string())
+}
+
+fn gallery_items_from_post(post: &reddit::Post) -> Vec<GalleryItem> {
+    let mut items = Vec::new();
+    let gallery = match &post.gallery_data {
+        Some(data) => data,
+        None => return items,
+    };
+    let metadata = match &post.media_metadata {
+        Some(data) => data,
+        None => return items,
+    };
+
+    for item in &gallery.items {
+        if let Some(entry) = metadata.get(&item.media_id) {
+            if let Some(gallery_item) = gallery_item_from_metadata(entry) {
+                items.push(gallery_item);
+            }
+        }
+    }
+
+    items
+}
+
+fn gallery_item_from_metadata(entry: &reddit::MediaMetadata) -> Option<GalleryItem> {
+    if entry.status.eq_ignore_ascii_case("failed") {
+        return None;
+    }
+
+    let mut larger: Option<(i64, String, i64)> = None;
+    let mut smaller: Option<(i64, String, i64)> = None;
+
+    let mut consider = |url: &str, width: i64, height: i64| {
+        let sanitized = sanitize_preview_url(url);
+        if sanitized.is_empty() || !is_supported_preview_url(&sanitized) {
+            return;
+        }
+        let width = if width > 0 {
+            width
+        } else {
+            TARGET_PREVIEW_WIDTH_PX
+        };
+        let height = if height > 0 {
+            height
+        } else {
+            ((width * 9) / 16).max(1)
+        };
+        if width >= TARGET_PREVIEW_WIDTH_PX {
+            let replace = larger
+                .as_ref()
+                .map(|(existing_width, _, _)| width < *existing_width)
+                .unwrap_or(true);
+            if replace {
+                larger = Some((width, sanitized, height));
+            }
+        } else {
+            let replace = smaller
+                .as_ref()
+                .map(|(existing_width, _, _)| width > *existing_width)
+                .unwrap_or(true);
+            if replace {
+                smaller = Some((width, sanitized, height));
+            }
+        }
+    };
+
+    consider(&entry.full.url, entry.full.width, entry.full.height);
+    for variant in &entry.preview {
+        consider(&variant.url, variant.width, variant.height);
+    }
+
+    let (width, url, height) = larger.or(smaller)?;
+    let width = width.max(1);
+    let height = height.max(1);
+    let label = image_label(&url);
+
+    Some(GalleryItem {
+        url,
+        width,
+        height,
+        label,
+    })
+}
+
+fn build_gallery_state(post: &reddit::Post) -> Option<GalleryState> {
+    let items = gallery_items_from_post(post);
+    if items.len() < 2 {
+        return None;
+    }
+    Some(GalleryState { items, index: 0 })
 }
 
 fn collect_high_res_media(post: &reddit::Post) -> Vec<DownloadCandidate> {
@@ -3273,6 +3491,7 @@ pub struct Model {
     fallback_source: String,
     content_source: String,
     media_previews: HashMap<String, MediaPreview>,
+    gallery_states: HashMap<String, GalleryState>,
     media_failures: HashSet<String>,
     pending_media: HashMap<String, Arc<AtomicBool>>,
     pending_media_order: VecDeque<String>,
@@ -3840,6 +4059,7 @@ impl Model {
         self.active_kitty = None;
         self.needs_kitty_flush = false;
         self.content_area = None;
+        self.gallery_states.clear();
 
         self.posts.clear();
         self.post_offset.set(0);
@@ -4197,6 +4417,7 @@ impl Model {
             fallback_source: opts.content.clone(),
             content_source: opts.content.clone(),
             media_previews: HashMap::new(),
+            gallery_states: HashMap::new(),
             media_failures: HashSet::new(),
             pending_media: HashMap::new(),
             pending_media_order: VecDeque::new(),
@@ -4578,6 +4799,10 @@ impl Model {
 
         if self.help_visible {
             return self.handle_help_key(key);
+        }
+
+        if self.handle_gallery_controls(key)? {
+            return Ok(false);
         }
 
         let mut dirty = false;
@@ -4977,6 +5202,80 @@ impl Model {
         }
 
         Ok(true)
+    }
+
+    fn handle_gallery_controls(&mut self, key: KeyEvent) -> Result<bool> {
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+        {
+            return Ok(false);
+        }
+
+        let delta = match key.code {
+            KeyCode::Char('[') | KeyCode::Char('{') => Some(-1),
+            KeyCode::Char(']') | KeyCode::Char('}') => Some(1),
+            KeyCode::Char(',') | KeyCode::Char('<') => Some(-1),
+            KeyCode::Char('.') | KeyCode::Char('>') => Some(1),
+            _ => None,
+        };
+
+        let Some(delta) = delta else {
+            return Ok(false);
+        };
+
+        if self.cycle_gallery(delta as isize) {
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    fn cycle_gallery(&mut self, delta: isize) -> bool {
+        if self.banner_selected() {
+            return false;
+        }
+
+        let post = match self.posts.get(self.selected_post).cloned() {
+            Some(post) => post,
+            None => return false,
+        };
+
+        let (len, new_index, label) = {
+            let state = match self.gallery_state_for_post(&post.post) {
+                Some(state) => state,
+                None => return false,
+            };
+            let len = state.len();
+            if len < 2 {
+                return false;
+            }
+            let current = state.index;
+            let new_index = ((current as isize + delta).rem_euclid(len as isize)) as usize;
+            if new_index == current {
+                return false;
+            }
+            state.index = new_index;
+            let label = state
+                .current()
+                .map(|item| item.label.clone())
+                .unwrap_or_else(|| "image".to_string());
+            (len, new_index, label)
+        };
+
+        let key = post.post.name.clone();
+        if let Some(flag) = self.pending_media.remove(&key) {
+            flag.store(true, Ordering::SeqCst);
+        }
+        self.remove_pending_media_tracking(&key);
+        self.media_previews.remove(&key);
+        self.media_failures.remove(&key);
+        self.queue_active_kitty_delete();
+        self.request_media_preview(&post.post);
+        self.sync_content_from_selection();
+        self.status_message = format!("Gallery image {}/{} — {}", new_index + 1, len, label);
+        self.mark_dirty();
+        true
     }
 
     fn handle_mouse(&mut self, event: MouseEvent) -> Result<()> {
@@ -5415,6 +5714,17 @@ impl Model {
             media_entry = media_entry.disabled();
         }
         entries.push(media_entry);
+
+        if let Some((index, total)) = self.current_gallery_info() {
+            entries.push(ActionMenuEntry::new(
+                format!("Previous gallery image ({}/{})", index + 1, total),
+                ActionMenuAction::GalleryPrevious,
+            ));
+            entries.push(ActionMenuEntry::new(
+                format!("Next gallery image ({}/{})", index + 1, total),
+                ActionMenuAction::GalleryNext,
+            ));
+        }
 
         let fullscreen_available = self.can_toggle_fullscreen_preview();
         let fullscreen_label = if self.media_fullscreen {
@@ -5999,6 +6309,32 @@ impl Model {
                                         self.action_menu_selected =
                                             self.action_menu_items.len().saturating_sub(1);
                                     }
+                                }
+                            }
+                            ActionMenuAction::GalleryPrevious => {
+                                if self.cycle_gallery(-1) {
+                                    self.action_menu_items = self.build_action_menu_entries();
+                                    if self.action_menu_selected >= self.action_menu_items.len() {
+                                        self.action_menu_selected =
+                                            self.action_menu_items.len().saturating_sub(1);
+                                    }
+                                } else {
+                                    self.status_message =
+                                        "No earlier gallery image available.".to_string();
+                                    self.mark_dirty();
+                                }
+                            }
+                            ActionMenuAction::GalleryNext => {
+                                if self.cycle_gallery(1) {
+                                    self.action_menu_items = self.build_action_menu_entries();
+                                    if self.action_menu_selected >= self.action_menu_items.len() {
+                                        self.action_menu_selected =
+                                            self.action_menu_items.len().saturating_sub(1);
+                                    }
+                                } else {
+                                    self.status_message =
+                                        "No additional gallery image available.".to_string();
+                                    self.mark_dirty();
                                 }
                             }
                             ActionMenuAction::OpenNavigation => {
@@ -6648,6 +6984,10 @@ impl Model {
                     ),
                     ("Ctrl+S (composer)", "Submit the comment you are writing"),
                     ("f", "Toggle fullscreen media preview"),
+                    (
+                        ", / . (gallery)",
+                        "Cycle between images in a Reddit gallery",
+                    ),
                     ("space / p (video)", "Pause or resume inline playback"),
                     (
                         "[ / ] (video)",
@@ -7229,6 +7569,16 @@ impl Model {
                     .map(|post| post.post.name.as_str());
                 if current == Some(post_name.as_str()) {
                     self.sync_content_from_selection();
+                    if let Some(preview) = self.media_previews.get(&post_name) {
+                        if let Some(gallery) = preview.gallery() {
+                            self.status_message = format!(
+                                "Gallery image {}/{} — {}",
+                                gallery.index + 1,
+                                gallery.total,
+                                gallery.label
+                            );
+                        }
+                    }
                 }
                 self.mark_dirty();
             }
@@ -9320,6 +9670,7 @@ impl Model {
                     self.collapsed_comments.clear();
                     self.visible_comment_indices.clear();
                     self.comment_offset.set(0);
+                    self.gallery_states.clear();
                     self.comment_status = "No comments available.".to_string();
                     self.selected_comment = 0;
                     self.close_action_menu(None);
@@ -9363,6 +9714,13 @@ impl Model {
                 self.queue_active_kitty_delete();
                 self.posts = batch.posts;
                 self.feed_after = batch.after;
+                self.gallery_states = self
+                    .posts
+                    .iter()
+                    .filter_map(|post| {
+                        build_gallery_state(&post.post).map(|state| (post.post.name.clone(), state))
+                    })
+                    .collect();
                 self.post_offset.set(0);
                 self.comment_offset.set(0);
                 self.close_action_menu(None);
@@ -9489,7 +9847,16 @@ impl Model {
                 }
 
                 let added = batch.posts.len();
+                let mut new_gallery_states: Vec<(String, GalleryState)> = Vec::new();
+                for post in &batch.posts {
+                    if let Some(state) = build_gallery_state(&post.post) {
+                        new_gallery_states.push((post.post.name.clone(), state));
+                    }
+                }
                 self.posts.extend(batch.posts);
+                for (key, state) in new_gallery_states {
+                    self.gallery_states.insert(key, state);
+                }
                 self.status_message = format!(
                     "Loaded {} more posts from {} ({}) — {} total.",
                     added,
@@ -9541,6 +9908,7 @@ impl Model {
             self.media_previews.clear();
             self.media_layouts.clear();
             self.media_failures.clear();
+            self.gallery_states.clear();
             for flag in self.pending_media.values() {
                 flag.store(true, Ordering::SeqCst);
             }
@@ -9971,6 +10339,73 @@ impl Model {
         Ok(())
     }
 
+    fn current_gallery_info(&self) -> Option<(usize, usize)> {
+        if self.banner_selected() {
+            return None;
+        }
+        let post = self.posts.get(self.selected_post)?;
+        if let Some(state) = self.gallery_states.get(&post.post.name) {
+            let len = state.len();
+            if len >= 2 {
+                let index = state.index.min(len.saturating_sub(1));
+                return Some((index, len));
+            }
+        }
+        let total = gallery_items_from_post(&post.post).len();
+        if total >= 2 {
+            Some((0, total))
+        } else {
+            None
+        }
+    }
+
+    fn gallery_state_for_post(&mut self, post: &reddit::Post) -> Option<&mut GalleryState> {
+        let key = post.name.clone();
+
+        if self
+            .gallery_states
+            .get(&key)
+            .is_some_and(|state| state.items.is_empty())
+        {
+            self.gallery_states.remove(&key);
+        }
+
+        if !self.gallery_states.contains_key(&key) {
+            if let Some(state) = build_gallery_state(post) {
+                self.gallery_states.insert(key.clone(), state);
+            }
+        }
+
+        if self
+            .gallery_states
+            .get(&key)
+            .is_some_and(|state| state.items.is_empty())
+        {
+            self.gallery_states.remove(&key);
+            return None;
+        }
+
+        if let Some(state) = self.gallery_states.get_mut(&key) {
+            state.clamp_index();
+            Some(state)
+        } else {
+            None
+        }
+    }
+
+    fn gallery_request_for(&mut self, post: &reddit::Post) -> Option<GalleryRequest> {
+        let state = self.gallery_state_for_post(post)?;
+        let total = state.len();
+        if total == 0 {
+            return None;
+        }
+        let index = state.index.min(total.saturating_sub(1));
+        state
+            .current()
+            .cloned()
+            .map(|item| GalleryRequest { item, index, total })
+    }
+
     fn request_media_preview(&mut self, post: &reddit::Post) {
         let key = post.name.clone();
         if self.pending_media.contains_key(&key)
@@ -10046,6 +10481,7 @@ impl Model {
         } else {
             media::Priority::Normal
         };
+        let gallery_request = self.gallery_request_for(post);
         let tx = self.response_tx.clone();
         let post_clone = post.clone();
         let media_handle = self.media_handle.clone();
@@ -10060,6 +10496,7 @@ impl Model {
             let result = load_media_preview(
                 &theme,
                 &post_clone,
+                gallery_request.clone(),
                 cancel_flag.as_ref(),
                 media_handle,
                 max_cols,
@@ -11608,6 +12045,20 @@ impl Model {
                         indent: MEDIA_INDENT,
                     },
                 );
+                if let Some(gallery) = preview.gallery() {
+                    let hint = format!(
+                        "{}Gallery image {}/{} — press , / . to cycle",
+                        " ".repeat(MEDIA_INDENT as usize),
+                        gallery.index + 1,
+                        gallery.total
+                    );
+                    lines.push(Line::from(Span::styled(
+                        hint,
+                        Style::default()
+                            .fg(self.theme.text_secondary)
+                            .add_modifier(Modifier::ITALIC),
+                    )));
+                }
                 if preview.has_kitty() {
                     self.needs_kitty_flush = true;
                 }
@@ -11712,6 +12163,20 @@ impl Model {
             );
             if preview.has_kitty() {
                 self.needs_kitty_flush = true;
+            }
+            if let Some(gallery) = preview.gallery() {
+                let message = format!(
+                    "{}Gallery image {}/{} — press , / . to cycle",
+                    " ".repeat(indent as usize),
+                    gallery.index + 1,
+                    gallery.total
+                );
+                lines.push(Line::from(Span::styled(
+                    message,
+                    Style::default()
+                        .fg(self.theme.text_secondary)
+                        .add_modifier(Modifier::ITALIC),
+                )));
             }
             if preview.limited_cols() || preview.limited_rows() {
                 lines.push(Line::default());
@@ -12634,6 +13099,10 @@ impl Model {
             parts.push("Refreshing feed…".to_string());
         }
 
+        if let Some((index, total)) = self.current_gallery_info() {
+            parts.push(format!("Gallery: ,/. cycle ({}/{})", index + 1, total));
+        }
+
         if self.active_video.is_some() {
             parts.push("Video: q stop playback".to_string());
         }
@@ -12778,8 +13247,13 @@ mod tests {
 
     #[test]
     fn kitty_placeholder_matches_dimensions() {
-        let placeholder =
-            kitty_placeholder_text(&crate::theme::Palette::terminal_default(), 4, 2, 0, "example");
+        let placeholder = kitty_placeholder_text(
+            &crate::theme::Palette::terminal_default(),
+            4,
+            2,
+            0,
+            "example",
+        );
         assert_eq!(placeholder.lines.len(), 3);
         assert_eq!(placeholder.lines[0].spans[0].content.as_ref(), "    ");
         assert_eq!(
