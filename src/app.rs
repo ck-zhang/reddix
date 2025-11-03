@@ -17,6 +17,8 @@ pub fn run() -> Result<()> {
     let config_path = config::default_path();
     let display_path = friendly_path(config_path.as_ref());
 
+    ui::configure_terminal_cell_metrics_override(cfg.ui.cell_width, cfg.ui.cell_height);
+
     let store =
         Arc::new(storage::Store::open(storage::Options::default()).context("open storage")?);
 

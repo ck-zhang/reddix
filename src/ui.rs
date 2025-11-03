@@ -569,30 +569,71 @@ struct CellMetrics {
     height: f64,
 }
 
+static CONFIGURED_CELL_METRICS: OnceLock<Option<CellMetrics>> = OnceLock::new();
+
+pub fn configure_terminal_cell_metrics_override(width: Option<f64>, height: Option<f64>) {
+    let override_metrics = match (width, height) {
+        (Some(w), Some(h)) if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 => {
+            Some(CellMetrics {
+                width: w,
+                height: h,
+            })
+        }
+        _ => None,
+    };
+    let _ = CONFIGURED_CELL_METRICS.set(override_metrics);
+}
+
+fn configured_cell_metrics() -> Option<CellMetrics> {
+    CONFIGURED_CELL_METRICS.get().and_then(|value| *value)
+}
+
+fn fallback_cell_metrics() -> CellMetrics {
+    if cfg!(windows) {
+        CellMetrics {
+            width: 8.0,
+            height: 16.0,
+        }
+    } else {
+        CellMetrics {
+            width: 1.0,
+            height: 1.0,
+        }
+    }
+}
+
 fn terminal_cell_metrics() -> CellMetrics {
     static METRICS: OnceLock<CellMetrics> = OnceLock::new();
     *METRICS.get_or_init(|| {
-        window_size().ok().map_or(
-            CellMetrics {
-                width: 1.0,
-                height: 1.0,
-            },
-            |size| {
+        if let Some(configured) = configured_cell_metrics() {
+            return configured;
+        }
+
+        let fallback = fallback_cell_metrics();
+        match window_size().ok() {
+            Some(size) => {
                 let columns = size.columns.max(1) as f64;
                 let rows = size.rows.max(1) as f64;
+
                 let width = if size.width > 0 && columns > 0.0 {
                     f64::from(size.width) / columns
                 } else {
-                    1.0
+                    0.0
                 };
                 let height = if size.height > 0 && rows > 0.0 {
                     f64::from(size.height) / rows
                 } else {
-                    1.0
+                    0.0
                 };
-                CellMetrics { width, height }
-            },
-        )
+
+                if width.is_finite() && width > 0.0 && height.is_finite() && height > 0.0 {
+                    CellMetrics { width, height }
+                } else {
+                    fallback
+                }
+            }
+            None => fallback,
+        }
     })
 }
 

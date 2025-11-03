@@ -70,12 +70,18 @@ fn default_redirect_uri() -> String {
 pub struct UIConfig {
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default)]
+    pub cell_width: Option<f64>,
+    #[serde(default)]
+    pub cell_height: Option<f64>,
 }
 
 impl Default for UIConfig {
     fn default() -> Self {
         Self {
             theme: default_theme(),
+            cell_width: None,
+            cell_height: None,
         }
     }
 }
@@ -210,6 +216,12 @@ fn merge_config(mut base: Config, other: Config) -> Config {
     if !other.ui.theme.is_empty() {
         base.ui.theme = other.ui.theme;
     }
+    if other.ui.cell_width.is_some() {
+        base.ui.cell_width = other.ui.cell_width;
+    }
+    if other.ui.cell_height.is_some() {
+        base.ui.cell_height = other.ui.cell_height;
+    }
 
     if other.media.cache_dir.is_some() {
         base.media.cache_dir = other.media.cache_dir;
@@ -271,6 +283,16 @@ fn apply_env_value(cfg: &mut Config, key: &str, value: String) {
                 .collect();
         }
         "ui.theme" => cfg.ui.theme = value,
+        "ui.cell_width" => {
+            if let Ok(parsed) = value.parse::<f64>() {
+                cfg.ui.cell_width = Some(parsed);
+            }
+        }
+        "ui.cell_height" => {
+            if let Ok(parsed) = value.parse::<f64>() {
+                cfg.ui.cell_height = Some(parsed);
+            }
+        }
         "media.cache_dir" => cfg.media.cache_dir = Some(PathBuf::from(value)),
         "media.max_size_bytes" => {
             if let Ok(parsed) = value.parse::<i64>() {
@@ -369,6 +391,8 @@ mod tests {
     fn load_defaults_without_files() {
         let cfg = load(LoadOptions::default()).unwrap();
         assert_eq!(cfg.ui.theme, "default");
+        assert!(cfg.ui.cell_width.is_none());
+        assert!(cfg.ui.cell_height.is_none());
         assert_eq!(cfg.reddit.redirect_uri, default_redirect_uri());
     }
 
@@ -384,8 +408,14 @@ mod tests {
     #[test]
     fn env_overrides() {
         env::set_var("REDDIX_UI__THEME", "dracula");
+        env::set_var("REDDIX_UI__CELL_WIDTH", "8.5");
+        env::set_var("REDDIX_UI__CELL_HEIGHT", "16.25");
         let cfg = load(LoadOptions::default()).unwrap();
         assert_eq!(cfg.ui.theme, "dracula");
+        assert_eq!(cfg.ui.cell_width, Some(8.5));
+        assert_eq!(cfg.ui.cell_height, Some(16.25));
         env::remove_var("REDDIX_UI__THEME");
+        env::remove_var("REDDIX_UI__CELL_WIDTH");
+        env::remove_var("REDDIX_UI__CELL_HEIGHT");
     }
 }
