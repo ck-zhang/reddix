@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 - Nothing yet.
 
+## [0.2.9] - 2025-11-05
+### Added
+- Optional `ui.cell_width` and `ui.cell_height` overrides so you can pin custom terminal cell metrics when needed.
+### Fixed
+- Windows now falls back to sensible cell metrics, restoring correct inline media scaling when `crossterm` reports zero pixel dimensions.
+
 ## [0.2.8] - 2025-10-30
 ### Added
 - Inline gallery support for multi-image posts with `,`/`.` cycling and action menu entries.
@@ -158,7 +164,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 - Initial release with the polished login workflow, refreshed caching, and improved feed pagination.
 
-[Unreleased]: https://github.com/ck-zhang/reddix/compare/v0.2.8...HEAD
+[Unreleased]: https://github.com/ck-zhang/reddix/compare/v0.2.9...HEAD
+[0.2.9]: https://github.com/ck-zhang/reddix/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/ck-zhang/reddix/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/ck-zhang/reddix/compare/v0.2.6...v0.2.7
 [0.2.3]: https://github.com/ck-zhang/reddix/compare/v0.2.2...v0.2.3

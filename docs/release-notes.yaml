@@ -1,4 +1,12 @@
 release:
+  - version: "0.2.9"
+    title: "What's new in v0.2.9"
+    banner: "Windows previews now scale correctly."
+    summary: "We ship sensible cell metrics defaults and optional overrides so inline media looks right everywhere."
+    url: "https://github.com/ck-zhang/reddix/releases/tag/v0.2.9"
+    details:
+      - "Windows terminals now fall back to 8x16 cell metrics when crossterm can't report pixel dimensions."
+      - "New ui.cell_width and ui.cell_height config entries let you pin custom metrics if your terminal needs them."
   - version: "0.2.8"
     title: "What's new in v0.2.8"
     banner: "Browse Reddit galleries without leaving the terminal."
