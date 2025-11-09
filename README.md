@@ -9,30 +9,41 @@ Reddix - Reddit, refined for the terminal.
 
 ## Features
 
-- image preview based on kitty graphics protocol
-- video playback through mpv's Kitty integration
-- gallery browsing with inline navigation controls
-- multi-account support
-- keyboard first navigation
-- smart caching
+- Image previews based on the kitty graphics protocol
+- Video playback via [mpv](https://mpv.io)'s Kitty integration
+- Gallery browsing with inline navigation controls
+- Multi-account support
+- Keyboard-first navigation
+- Smart caching
 - NSFW filter toggle
 
 ## Install
 
-Download the latest [release](https://github.com/ck-zhang/reddix/releases/latest) from GitHub or run one of the installers
+### GitHub Releases
+
+You can download the latest [release](https://github.com/ck-zhang/reddix/releases/latest) from GitHub
+
+### Install via Homebrew:
+
+```sh
+brew install Reddix
+```
+### Or run one of the installers:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/ck-zhang/reddix/releases/latest/download/reddix-installer.sh | sh
 ```
 
 ## Quickstart
-1. Create a Reddit “script” at https://www.reddit.com/prefs/apps and set the redirect URI to `http://127.0.0.1:65010/reddix/callback`.
+
+1. Create a Reddit “script” at [https://www.reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) and set the redirect URI to `http://127.0.0.1:65010/reddix/callback`.
 2. Launch `reddix`, press `m`, and follow the guided menu for setup.
 3. Prefer to configure things manually? Copy [`docs/examples/config.yaml`](docs/examples/config.yaml) into `~/.config/reddix/config.yaml` and fill in your credentials.
 
 Core shortcuts: `j/k` move, `h/l` change panes, `m` guided menu, `o` action menu, `r` refresh, `s` sync subs, `u/d` vote, `q` quit.
 
 ## Support
-- Feature requests and contributions are welcome, this project is in its very early stage.
+
+- I welcome feature requests and contributions; the project is still in its early stages.
 - Track ongoing ideas in the [feature request log](docs/feature-requests.md).
-- Donation: https://ko-fi.com/ckzhang
+- Donations: [https://ko-fi.com/ckzhang](https://ko-fi.com/ckzhang)
