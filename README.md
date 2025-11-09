@@ -26,7 +26,7 @@ You can download the latest [release](https://github.com/ck-zhang/reddix/release
 ### Install via Homebrew:
 
 ```sh
-brew install Reddix
+brew install reddix
 ```
 ### Or run one of the installers:
 
