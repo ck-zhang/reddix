@@ -23,15 +23,16 @@ Reddix - Reddit, refined for the terminal.
 
 You can download the latest [release](https://github.com/ck-zhang/reddix/releases/latest) from GitHub
 
-### Install via Homebrew:
-
-```sh
-brew install reddix
-```
-### Or run one of the installers:
+### Use the install script:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/ck-zhang/reddix/releases/latest/download/reddix-installer.sh | sh
+```
+
+### Or install via Homebrew:
+
+```sh
+brew install reddix
 ```
 
 ## Quickstart
