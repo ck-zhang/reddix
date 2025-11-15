@@ -29,10 +29,20 @@ You can download the latest [release](https://github.com/ck-zhang/reddix/release
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/ck-zhang/reddix/releases/latest/download/reddix-installer.sh | sh
 ```
 
-### Or install via Homebrew:
+### Install via Homebrew:
 
 ```sh
 brew install reddix
+```
+
+### Install via AUR (Archlinux):
+From source:
+```sh
+yay -S reddix
+```
+Binaries:
+```sh
+yay -S reddix-bin
 ```
 
 ## Quickstart
