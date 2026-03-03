@@ -17,12 +17,21 @@ use crate::ui;
 pub struct RunOptions {
     /// If set, open with this subreddit selected (e.g. "apple" or "r/apple").
     pub initial_subreddit: Option<String>,
+    /// If set, load config from this path instead of the default.
+    pub config_file: Option<std::path::PathBuf>,
 }
 
 pub fn run(options: Option<RunOptions>) -> Result<()> {
     let run_opts = options.unwrap_or_default();
-    let cfg = config::load(config::LoadOptions::default()).context("load config")?;
-    let config_path = config::default_path();
+    let load_opts = config::LoadOptions {
+        config_file: run_opts.config_file.clone(),
+        env_prefix: None,
+    };
+    let cfg = config::load(load_opts).context("load config")?;
+    let config_path = run_opts
+        .config_file
+        .clone()
+        .or_else(config::default_path);
     let display_path = friendly_path(config_path.as_ref());
 
     ui::configure_terminal_cell_metrics_override(cfg.ui.cell_width, cfg.ui.cell_height);

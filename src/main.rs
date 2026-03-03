@@ -1,6 +1,7 @@
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut initial_subreddit: Option<String> = None;
+    let mut config_file: Option<std::path::PathBuf> = None;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -10,9 +11,17 @@ fn main() {
             }
             "--help" | "-h" => {
                 println!(
-                    "Reddix — Reddit, refined for the terminal.\n\n  --version, -V        Show version and exit\n  --help,    -h        Show this help message\n  -r, --subreddit NAME Open with this subreddit selected (e.g. -r apple)\n  --check-updates      Check for updates and exit"
+                    "Reddix — Reddit, refined for the terminal.\n\n  --version, -V        Show version and exit\n  --help,    -h        Show this help message\n  -r, --subreddit NAME Open with this subreddit selected (e.g. -r apple)\n  --config PATH        Use config file at PATH\n  --check-updates      Check for updates and exit"
                 );
                 return;
+            }
+            "--config" => {
+                i += 1;
+                if i < args.len() && !args[i].starts_with('-') {
+                    config_file = Some(std::path::PathBuf::from(&args[i]));
+                }
+                i += 1;
+                continue;
             }
             "-r" | "--subreddit" => {
                 i += 1;
@@ -35,9 +44,10 @@ fn main() {
         }
     }
 
-    let run_opts = if initial_subreddit.is_some() {
+    let run_opts = if initial_subreddit.is_some() || config_file.is_some() {
         Some(reddix::RunOptions {
             initial_subreddit,
+            config_file,
             ..Default::default()
         })
     } else {
