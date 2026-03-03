@@ -224,6 +224,8 @@ enum ActionMenuMode {
 enum ActionMenuAction {
     OpenLinks,
     SaveMedia,
+    SavePost,
+    UnsavePost,
     StartVideo,
     StopVideo,
     OpenVideoExternal,
@@ -5738,6 +5740,17 @@ impl Model {
         }
         entries.push(links_entry);
 
+        if self.interaction_service.is_some() && !self.banner_selected() {
+            if let Some(preview) = self.posts.get(self.selected_post) {
+                let (label, action) = if preview.post.saved {
+                    ("Unsave post".to_string(), ActionMenuAction::UnsavePost)
+                } else {
+                    ("Save post".to_string(), ActionMenuAction::SavePost)
+                };
+                entries.push(ActionMenuEntry::new(label, action));
+            }
+        }
+
         let media_available = if self.banner_selected() {
             false
         } else {
@@ -6262,6 +6275,39 @@ impl Model {
                                 if self.action_menu_selected >= self.action_menu_items.len() {
                                     self.action_menu_selected =
                                         self.action_menu_items.len().saturating_sub(1);
+                                }
+                            }
+                            ActionMenuAction::SavePost | ActionMenuAction::UnsavePost => {
+                                if let Some(service) = self.interaction_service.as_ref() {
+                                    if let Some(preview) = self.posts.get_mut(self.selected_post) {
+                                        let fullname = preview.post.name.clone();
+                                        let unsave = matches!(entry.action, ActionMenuAction::UnsavePost);
+                                        let result = if unsave {
+                                            service.unsave(&fullname)
+                                        } else {
+                                            service.save(&fullname, None)
+                                        };
+                                        match result {
+                                            Ok(()) => {
+                                                preview.post.saved = !unsave;
+                                                self.status_message = if unsave {
+                                                    "Post unsaved.".to_string()
+                                                } else {
+                                                    "Post saved.".to_string()
+                                                };
+                                                self.action_menu_items = self.build_action_menu_entries();
+                                                if self.action_menu_selected >= self.action_menu_items.len() {
+                                                    self.action_menu_selected =
+                                                        self.action_menu_items.len().saturating_sub(1);
+                                                }
+                                            }
+                                            Err(err) => {
+                                                self.status_message =
+                                                    format!("Failed to {}: {}", if unsave { "unsave" } else { "save" }, err);
+                                            }
+                                        }
+                                        self.mark_dirty();
+                                    }
                                 }
                             }
                             ActionMenuAction::StartVideo => {
@@ -13000,6 +13046,16 @@ impl Model {
             if self.menu_form.auth_pending {
                 lines.push(Line::from(vec![Span::raw(
                     "Waiting for Reddit to redirect back to Reddix...".to_string(),
+                )]));
+            }
+            if let Some(url) = self.menu_form.auth_link() {
+                lines.push(Line::default());
+                lines.push(Line::from(vec![Span::raw(
+                    "URL (copy to open in browser on another machine, e.g. SSH):".to_string(),
+                )]));
+                lines.push(Line::from(vec![Span::styled(
+                    url.to_string(),
+                    Style::default().fg(self.theme.text_primary),
                 )]));
             }
         }

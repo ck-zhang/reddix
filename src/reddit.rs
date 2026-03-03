@@ -480,6 +480,8 @@ pub struct Post {
     #[serde(default)]
     pub spoiler: bool,
     #[serde(default)]
+    pub saved: bool,
+    #[serde(default)]
     pub post_hint: String,
     #[serde(default)]
     pub is_video: bool,
