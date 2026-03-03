@@ -1,39 +1,53 @@
 fn main() {
-    if handle_cli_flags() {
-        return;
-    }
-
-    if let Err(err) = reddix::run() {
-        eprintln!("error: {err:?}");
-        std::process::exit(1);
-    }
-}
-
-fn handle_cli_flags() -> bool {
-    let mut saw_flag = false;
-    for arg in std::env::args().skip(1) {
-        match arg.as_str() {
+    let args: Vec<String> = std::env::args().collect();
+    let mut initial_subreddit: Option<String> = None;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
             "--version" | "-V" => {
                 println!("Reddix {}", reddix::VERSION);
-                saw_flag = true;
+                return;
             }
             "--help" | "-h" => {
                 println!(
-                    "Reddix — Reddit, refined for the terminal.\n\n  --version, -V        Show version and exit\n  --help,    -h        Show this help message\n  --check-updates      Check for updates and exit"
+                    "Reddix — Reddit, refined for the terminal.\n\n  --version, -V        Show version and exit\n  --help,    -h        Show this help message\n  -r, --subreddit NAME Open with this subreddit selected (e.g. -r apple)\n  --check-updates      Check for updates and exit"
                 );
-                saw_flag = true;
+                return;
+            }
+            "-r" | "--subreddit" => {
+                i += 1;
+                if i < args.len() && !args[i].starts_with('-') {
+                    initial_subreddit = Some(args[i].clone());
+                }
+                i += 1;
+                continue;
             }
             "--check-updates" => {
-                saw_flag = true;
                 if let Err(err) = check_updates_once() {
                     eprintln!("Update check failed: {err:?}");
                     std::process::exit(1);
                 }
+                return;
             }
-            _ => {}
+            _ => {
+                i += 1;
+            }
         }
     }
-    saw_flag
+
+    let run_opts = if initial_subreddit.is_some() {
+        Some(reddix::RunOptions {
+            initial_subreddit,
+            ..Default::default()
+        })
+    } else {
+        None
+    };
+
+    if let Err(err) = reddix::run(run_opts) {
+        eprintln!("error: {err:?}");
+        std::process::exit(1);
+    }
 }
 
 fn check_updates_once() -> anyhow::Result<()> {

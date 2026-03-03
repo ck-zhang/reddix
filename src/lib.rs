@@ -17,4 +17,4 @@ pub mod video;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub use app::run;
+pub use app::{run, RunOptions};

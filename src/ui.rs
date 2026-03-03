@@ -3517,6 +3517,8 @@ pub struct Options {
     pub session_manager: Option<Arc<session::Manager>>,
     pub fetch_subreddits_on_start: bool,
     pub theme: crate::theme::Palette,
+    /// If set, open with this subreddit selected (e.g. "apple" or "r/apple").
+    pub initial_subreddit: Option<String>,
 }
 
 pub struct Model {
@@ -4577,6 +4579,21 @@ impl Model {
             .iter()
             .position(|name| name.eq_ignore_ascii_case("r/frontpage"))
             .unwrap_or(0);
+        if let Some(ref name) = opts.initial_subreddit {
+            let normalized = normalize_subreddit_name(name);
+            if normalized != "r/frontpage" {
+                if let Some(idx) = model
+                    .subreddits
+                    .iter()
+                    .position(|s| s.eq_ignore_ascii_case(&normalized))
+                {
+                    model.selected_sub = idx;
+                } else {
+                    model.subreddits.push(normalized);
+                    model.selected_sub = model.subreddits.len().saturating_sub(1);
+                }
+            }
+        }
         model.selected_post = 0;
         model.selected_comment = 0;
         model.post_offset.set(0);

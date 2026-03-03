@@ -12,7 +12,15 @@ use crate::storage;
 use crate::theme;
 use crate::ui;
 
-pub fn run() -> Result<()> {
+/// Options for the main run entry point (e.g. from CLI).
+#[derive(Default)]
+pub struct RunOptions {
+    /// If set, open with this subreddit selected (e.g. "apple" or "r/apple").
+    pub initial_subreddit: Option<String>,
+}
+
+pub fn run(options: Option<RunOptions>) -> Result<()> {
+    let run_opts = options.unwrap_or_default();
     let cfg = config::load(config::LoadOptions::default()).context("load config")?;
     let config_path = config::default_path();
     let display_path = friendly_path(config_path.as_ref());
@@ -157,6 +165,7 @@ pub fn run() -> Result<()> {
         session_manager: session_manager.clone(),
         fetch_subreddits_on_start,
         theme: theme::palette_for(theme),
+        initial_subreddit: run_opts.initial_subreddit,
     };
 
     let mut model = ui::Model::new(options);
