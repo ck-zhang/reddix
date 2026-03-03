@@ -13002,6 +13002,16 @@ impl Model {
                     "Waiting for Reddit to redirect back to Reddix...".to_string(),
                 )]));
             }
+            if let Some(url) = self.menu_form.auth_link() {
+                lines.push(Line::default());
+                lines.push(Line::from(vec![Span::raw(
+                    "URL (copy to open in browser on another machine, e.g. SSH):".to_string(),
+                )]));
+                lines.push(Line::from(vec![Span::styled(
+                    url.to_string(),
+                    Style::default().fg(self.theme.text_primary),
+                )]));
+            }
         }
         lines.push(Line::default());
         lines.push(Line::from(vec![Span::raw(
