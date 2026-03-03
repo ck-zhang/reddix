@@ -2,6 +2,8 @@
 
 This document tracks community requests and ideas for future Reddix releases.
 
+For the latest open issues (bugs, feature requests, and discussions), see the [GitHub Issues](https://github.com/ck-zhang/reddix/issues) list. Some relevant open issues include: [#8](https://github.com/ck-zhang/reddix/issues/8) (configurable keys), [#13](https://github.com/ck-zhang/reddix/issues/13) (remote/SSH setup), [#15](https://github.com/ck-zhang/reddix/issues/15) (Sixel support), [#22](https://github.com/ck-zhang/reddix/issues/22) (media downloader), [#26](https://github.com/ck-zhang/reddix/issues/26) (save posts), [#31](https://github.com/ck-zhang/reddix/issues/31) (open to specific subreddit), and others.
+
 ## Active Requests
 
 - Layout option with comments in the middle pane.
