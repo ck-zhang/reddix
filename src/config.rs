@@ -74,6 +74,9 @@ pub struct UIConfig {
     pub cell_width: Option<f64>,
     #[serde(default)]
     pub cell_height: Option<f64>,
+    /// If set, open with this subreddit selected (same as -r/--subreddit).
+    #[serde(default)]
+    pub initial_subreddit: Option<String>,
 }
 
 impl Default for UIConfig {
@@ -82,6 +85,7 @@ impl Default for UIConfig {
             theme: default_theme(),
             cell_width: None,
             cell_height: None,
+            initial_subreddit: None,
         }
     }
 }
@@ -222,6 +226,9 @@ fn merge_config(mut base: Config, other: Config) -> Config {
     if other.ui.cell_height.is_some() {
         base.ui.cell_height = other.ui.cell_height;
     }
+    if other.ui.initial_subreddit.is_some() {
+        base.ui.initial_subreddit = other.ui.initial_subreddit;
+    }
 
     if other.media.cache_dir.is_some() {
         base.media.cache_dir = other.media.cache_dir;
@@ -293,6 +300,7 @@ fn apply_env_value(cfg: &mut Config, key: &str, value: String) {
                 cfg.ui.cell_height = Some(parsed);
             }
         }
+        "ui.initial_subreddit" => cfg.ui.initial_subreddit = Some(value),
         "media.cache_dir" => cfg.media.cache_dir = Some(PathBuf::from(value)),
         "media.max_size_bytes" => {
             if let Ok(parsed) = value.parse::<i64>() {

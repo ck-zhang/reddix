@@ -174,7 +174,9 @@ pub fn run(options: Option<RunOptions>) -> Result<()> {
         session_manager: session_manager.clone(),
         fetch_subreddits_on_start,
         theme: theme::palette_for(theme),
-        initial_subreddit: run_opts.initial_subreddit,
+        initial_subreddit: run_opts
+            .initial_subreddit
+            .or_else(|| cfg.ui.initial_subreddit.clone()),
     };
 
     let mut model = ui::Model::new(options);

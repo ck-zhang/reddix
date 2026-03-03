@@ -14,6 +14,7 @@ reddit:
   redirect_uri: "http://127.0.0.1:65010/reddix/callback"
 ui:
   theme: default
+  # initial_subreddit: apple   # optional: open with this subreddit selected (same as -r apple)
 media:
   cache_dir: null
   max_size_bytes: 524288000
