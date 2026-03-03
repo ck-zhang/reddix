@@ -11,6 +11,7 @@ reddit:
     - read
     - vote
     - subscribe
+    # - save   # add this scope to use "Save post" in the action menu
   redirect_uri: "http://127.0.0.1:65010/reddix/callback"
 ui:
   theme: default
