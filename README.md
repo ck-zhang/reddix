@@ -55,6 +55,16 @@ Note: As of Nov 2025, Reddit blocked the old `reddit.com/prefs/apps` flow. Apply
 
 Core shortcuts: `j/k` move, `h/l` change panes, `m` guided menu, `o` action menu, `r` refresh, `s` sync subs, `u/d` vote, `q` quit.
 
+## Remote / SSH setup
+
+When you run Reddix over SSH or on a headless machine, the guided menu’s “Open Link” step cannot open a browser on the remote host. You can still authorize:
+
+1. Start Reddix on the remote, press `m`, and choose **Add account**. When the auth URL is generated, copy it from the menu (or from the URL shown in the UI).
+2. Open that URL in a browser on your **local** machine and complete the Reddit login.
+3. Ensure your Reddit app’s redirect URI points to the machine where Reddix is running (e.g. your server’s IP or hostname and port 65010), so the redirect reaches the Reddix callback after you authorize.
+
+See [issue #13](https://github.com/ck-zhang/reddix/issues/13) for details and future improvements (e.g. displaying the auth URL for easy copy).
+
 ## Support
 
 - I welcome feature requests and contributions; the project is still in its early stages.
