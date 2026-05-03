@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 - Nothing yet.
 
+## [0.2.10] - 2026-05-03
+### Added
+- Optional cookie authentication mode using `TOKEN_V2` and `REDDIT_SESSION` from an existing browser session.
+- Cookie auth setup documentation and a `cookie_probe` example for checking credentials before opening the TUI.
+### Fixed
+- Apple Terminal now disables Kitty image escape output automatically.
+
 ## [0.2.9] - 2025-11-05
 ### Added
 - Optional `ui.cell_width` and `ui.cell_height` overrides so you can pin custom terminal cell metrics when needed.
@@ -164,7 +171,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 - Initial release with the polished login workflow, refreshed caching, and improved feed pagination.
 
-[Unreleased]: https://github.com/ck-zhang/reddix/compare/v0.2.9...HEAD
+[Unreleased]: https://github.com/natekettles/reddix/compare/v0.2.10...HEAD
+[0.2.10]: https://github.com/natekettles/reddix/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/ck-zhang/reddix/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/ck-zhang/reddix/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/ck-zhang/reddix/compare/v0.2.6...v0.2.7

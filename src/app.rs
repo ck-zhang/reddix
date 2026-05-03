@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 
@@ -11,6 +12,20 @@ use crate::session;
 use crate::storage;
 use crate::theme;
 use crate::ui;
+
+struct EnvTokenProvider {
+    access_token: String,
+}
+
+impl reddit::TokenProvider for EnvTokenProvider {
+    fn token(&self) -> Result<reddit::OAuthToken> {
+        Ok(reddit::OAuthToken {
+            access_token: self.access_token.clone(),
+            token_type: "bearer".to_string(),
+            expires_at: None::<SystemTime>,
+        })
+    }
+}
 
 pub fn run() -> Result<()> {
     let cfg = config::load(config::LoadOptions::default()).context("load config")?;
@@ -65,11 +80,65 @@ pub fn run() -> Result<()> {
     let mut session_manager: Option<Arc<session::Manager>> = None;
     let mut fetch_subreddits_on_start = false;
 
+    let reddit_session = std::env::var("REDDIT_SESSION")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let token_v2 = std::env::var("TOKEN_V2")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
     let login_ready = !cfg.reddit.client_id.trim().is_empty()
         && !cfg.reddit.user_agent.trim().is_empty()
         && !cfg.reddit.redirect_uri.trim().is_empty();
 
-    if login_ready {
+    if let Some(token_v2) = token_v2 {
+        let user_agent = if cfg.reddit.user_agent.trim().is_empty() {
+            format!("reddix/{} cookie-auth", env!("CARGO_PKG_VERSION"))
+        } else {
+            cfg.reddit.user_agent.clone()
+        };
+        let mut cookie_parts = Vec::new();
+        if let Some(reddit_session) = reddit_session {
+            cookie_parts.push(format!("reddit_session={reddit_session}"));
+        }
+        cookie_parts.push(format!("token_v2={token_v2}"));
+
+        let token_provider: Arc<dyn reddit::TokenProvider> = Arc::new(EnvTokenProvider {
+            access_token: token_v2,
+        });
+        if let Ok(client) = reddit::Client::new(
+            token_provider,
+            reddit::ClientConfig {
+                user_agent,
+                base_url: Some("https://www.reddit.com/".to_string()),
+                http_client: None,
+                cookie_header: Some(cookie_parts.join("; ")),
+                bearer_auth: false,
+            },
+        ) {
+            let client = Arc::new(client);
+            let subreddit_api: Arc<dyn SubredditService + Send + Sync> =
+                Arc::new(data::RedditSubredditService::new(client.clone()));
+            let feed_api: Arc<dyn FeedService + Send + Sync> =
+                Arc::new(data::RedditFeedService::new(client.clone()));
+            let comment_api: Arc<dyn CommentService + Send + Sync> =
+                Arc::new(data::RedditCommentService::new(client.clone()));
+            let interaction_api: Arc<dyn InteractionService + Send + Sync> =
+                Arc::new(data::RedditInteractionService::new(client.clone()));
+
+            feed_service = Some(feed_api);
+            subreddit_service = Some(subreddit_api);
+            comment_service = Some(comment_api);
+            interaction_service = Some(interaction_api);
+            fetch_subreddits_on_start = true;
+            posts.clear();
+            status = "Using Reddit cookie auth from TOKEN_V2/REDDIT_SESSION. Press q to quit."
+                .to_string();
+            content = "Cookie auth mode is active. Loading subscribed feeds...".to_string();
+        }
+    } else if login_ready {
         let flow_cfg = auth::Config {
             client_id: cfg.reddit.client_id.clone(),
             client_secret: cfg.reddit.client_secret.clone(),
@@ -100,6 +169,8 @@ pub fn run() -> Result<()> {
                                     user_agent: cfg.reddit.user_agent.clone(),
                                     base_url: None,
                                     http_client: None,
+                                    cookie_header: None,
+                                    bearer_auth: true,
                                 },
                             ) {
                                 let client = Arc::new(client);

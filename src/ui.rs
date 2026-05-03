@@ -3126,6 +3126,9 @@ fn determine_initial_kitty_status() -> KittyStatus {
     if env_truthy("REDDIX_DISABLE_KITTY") {
         return KittyStatus::ForcedDisabled;
     }
+    if running_inside_apple_terminal() {
+        return KittyStatus::ForcedDisabled;
+    }
     if env_truthy("REDDIX_FORCE_KITTY") {
         return KittyStatus::ForcedEnabled;
     }
@@ -3146,6 +3149,12 @@ fn determine_initial_kitty_status() -> KittyStatus {
         return KittyStatus::Supported;
     }
     KittyStatus::Unknown
+}
+
+fn running_inside_apple_terminal() -> bool {
+    env::var("TERM_PROGRAM")
+        .map(|program| program == "Apple_Terminal")
+        .unwrap_or(false)
 }
 
 fn terminal_hints_kitty_support() -> bool {
@@ -7276,6 +7285,8 @@ impl Model {
                     user_agent,
                     base_url: None,
                     http_client: None,
+                    cookie_header: None,
+                    bearer_auth: true,
                 },
             )
             .context("create reddit client")?,

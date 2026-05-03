@@ -1,9 +1,10 @@
+use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, bail, Context, Result};
 use reqwest::blocking::{Client as HttpClient, Response};
-use reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
+use reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE, COOKIE, USER_AGENT};
 use reqwest::Method;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,8 @@ pub struct ClientConfig {
     pub user_agent: String,
     pub base_url: Option<String>,
     pub http_client: Option<HttpClient>,
+    pub cookie_header: Option<String>,
+    pub bearer_auth: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -128,6 +131,8 @@ pub struct Client {
     http: HttpClient,
     user_agent: String,
     base_url: Url,
+    cookie_header: Option<String>,
+    bearer_auth: bool,
     rate: RwLock<RateLimit>,
 }
 
@@ -159,6 +164,8 @@ impl Client {
             http,
             user_agent: config.user_agent,
             base_url,
+            cookie_header: config.cookie_header,
+            bearer_auth: config.bearer_auth,
             rate: RwLock::new(RateLimit::default()),
         })
     }
@@ -232,8 +239,7 @@ impl Client {
         };
         let mut params = opts.into_params();
         params.push(("sort".into(), sort.as_str().to_string()));
-        let resp = self.request(Method::GET, &path, &params, None)?;
-        let payload: Vec<Value> = resp.json()?;
+        let payload: Vec<Value> = self.get_json(&path, &params)?;
         if payload.len() < 2 {
             bail!("reddit: comments payload missing elements");
         }
@@ -323,8 +329,7 @@ impl Client {
             bail!("reddit: subreddit name required");
         }
         let path = format!("/r/{}/about.json", name);
-        let resp = self.request(Method::GET, &path, &[], None)?;
-        let about: SubredditAboutEnvelope = resp.json()?;
+        let about: SubredditAboutEnvelope = self.get_json(&path, &[])?;
         Ok(about.data.user_is_subscriber)
     }
 
@@ -366,9 +371,49 @@ impl Client {
         T: DeserializeOwned,
     {
         let params = opts.into_params();
-        let resp = self.request(Method::GET, path, &params, None)?;
-        let listing: ListingEnvelope<T> = resp.json()?;
+        let listing: ListingEnvelope<T> = self.get_json(path, &params)?;
         Ok(listing.data)
+    }
+
+    fn get_json<T>(&self, path: &str, params: &[(String, String)]) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        if self.cookie_header.is_none() {
+            let resp = self.request(Method::GET, path, params, None)?;
+            return Ok(resp.json()?);
+        }
+
+        let mut url = self.base_url.join(path)?;
+        if !params.is_empty() {
+            let mut pairs = url.query_pairs_mut();
+            for (k, v) in params {
+                pairs.append_pair(k, v);
+            }
+        }
+
+        let cookie_header = self.cookie_header.as_ref().expect("checked above");
+        let output = Command::new("curl")
+            .arg("-sS")
+            .arg("-L")
+            .arg("-A")
+            .arg(&self.user_agent)
+            .arg("-H")
+            .arg(format!("Cookie: {cookie_header}"))
+            .arg("-H")
+            .arg("accept: application/json,text/plain,*/*")
+            .arg("-H")
+            .arg("accept-language: en-US,en;q=0.9")
+            .arg(url.as_str())
+            .output()
+            .context("reddit: run curl transport")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("reddit: curl transport failed: {}", stderr.trim());
+        }
+
+        serde_json::from_slice(&output.stdout).context("reddit: decode curl transport response")
     }
 
     fn request(
@@ -390,9 +435,20 @@ impl Client {
         }
 
         let mut req = self.http.request(method, url);
-        let auth_value = format!("Bearer {}", token.access_token);
         req = req.header(USER_AGENT, self.user_agent.clone());
-        req = req.header(AUTHORIZATION, auth_value);
+        if self.cookie_header.is_some() {
+            req = req
+                .header("accept", "application/json,text/plain,*/*")
+                .header("accept-language", "en-US,en;q=0.9")
+                .header("referer", "https://www.reddit.com/");
+        }
+        if self.bearer_auth {
+            let auth_value = format!("Bearer {}", token.access_token);
+            req = req.header(AUTHORIZATION, auth_value);
+        }
+        if let Some(cookie_header) = &self.cookie_header {
+            req = req.header(COOKIE, cookie_header.clone());
+        }
         if let Some(form_data) = form {
             req = req.header(CONTENT_TYPE, "application/x-www-form-urlencoded");
             req = req.form(&form_data);

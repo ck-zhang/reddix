@@ -13,3 +13,6 @@ installers = ["shell", "powershell"]
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Where to host releases
 hosting = "github"
+# This fork keeps a manual workflow_dispatch trigger and simpler tag glob so
+# GitHub Actions can build release assets on demand.
+allow-dirty = ["ci"]

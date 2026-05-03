@@ -1,4 +1,13 @@
 release:
+  - version: "0.2.10"
+    title: "What's new in v0.2.10"
+    banner: "Cookie auth for personal Reddit sessions."
+    summary: "This fork can use your browser Reddit cookies when OAuth app approval is unavailable or delayed."
+    url: "https://github.com/natekettles/reddix/releases/tag/v0.2.10"
+    details:
+      - "Set TOKEN_V2 and optional REDDIT_SESSION to use cookie auth instead of OAuth."
+      - "Run cargo run --example cookie_probe to check credentials before opening the TUI."
+      - "Apple Terminal now disables Kitty image escapes automatically."
   - version: "0.2.9"
     title: "What's new in v0.2.9"
     banner: "Windows previews now scale correctly."
